@@ -1,0 +1,25 @@
+{
+  "name": "auto-my-sh",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ready": "vp run -r typecheck && vp check && vp run -r test && vp run -r build",
+    "dev": "vp run -r --parallel dev",
+    "deploy": "vp run -r deploy"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.9.0",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

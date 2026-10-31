@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vite-plus/client"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "dist/types",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    ".cloudflare/types",
+    "cloudflare.config.ts",
+    "src",
+    "test",
+    "drizzle",
+    "vite.config.ts"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "utils",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./recurrence": "./src/recurrence.ts"
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "croner": "catalog:",
+    "cronstrue": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

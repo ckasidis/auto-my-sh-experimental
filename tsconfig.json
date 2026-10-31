@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/assistant"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./packages/utils"
+    }
+  ]
+}

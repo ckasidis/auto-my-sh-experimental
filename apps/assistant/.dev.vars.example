@@ -1,0 +1,9 @@
+# The assistant Worker's secrets: read by `cf dev`, and uploaded with `cf deploy --secrets-file .dev.vars`. Copy to
+# `.dev.vars`.
+
+# Token from @BotFather.
+TELEGRAM_BOT_TOKEN=
+# Any random string; Telegram sends it back in `X-Telegram-Bot-Api-Secret-Token` on every update.
+TELEGRAM_WEBHOOK_SECRET=
+# The owner's private chat id (equal to their Telegram user id).
+TELEGRAM_CHAT_ID=

@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # One deploy at a time on `main`; a newer push to a pull request replaces its older run.
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    env:
+      CF_SEND_TELEMETRY: "false"
+    steps:
+      - uses: actions/checkout@v6
+      # Vite+ (its version from the lockfile), Node.js, and pnpm from `devEngines`; then `vp install`.
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: "24"
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+      # Types, format, lint, unit tests, and the build of both Workers. `vp build` is `cf build` with the project's
+      # pinned Vite: `cf` delegates to `npx vite`, which this workspace has no binary for. It records `production`.
+      - run: vp run ready
+      # Validates both builds without credentials, so pull requests from forks run it too.
+      - run: vp run -r deploy:dry-run
+      # The assistant deploys first: the web Worker's service binding needs it. The Telegram secrets are
+      # already on the assistant Worker; a deploy keeps them.
+      - if: github.event_name == 'push'
+        run: vp run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

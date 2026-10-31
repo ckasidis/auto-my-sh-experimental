@@ -1,0 +1,45 @@
+{
+  "name": "assistant",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/types/src/server.d.ts"
+    },
+    "./user-store": {
+      "types": "./dist/types/src/user-store.d.ts"
+    },
+    "./schedule": {
+      "types": "./dist/types/src/schedule.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "deploy": "cf deploy --prebuilt --mode production",
+    "deploy:dry-run": "cf deploy --prebuilt --mode production --dry-run",
+    "test": "vp test",
+    "typecheck": "cf workers types && tsc",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "~1.4.0",
+    "@earendil-works/pi-ai": "~1.4.0",
+    "@earendil-works/pi-durable": "~1.4.0",
+    "agents": "^0.31.0",
+    "drizzle-orm": "catalog:",
+    "grammy": "catalog:",
+    "typebox": "catalog:",
+    "utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "cf": "catalog:",
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
