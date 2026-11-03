@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "deploy": "cf deploy --prebuilt --mode production",
     "deploy:dry-run": "cf deploy --prebuilt --mode production --dry-run",
     "test": "vp test",
     "typecheck": "cf workers types && tsc"

@@ -20,6 +20,16 @@ const sqlText = (): Plugin => ({
 // Unit tests run in Node and need no Workers runtime or remote bindings.
 export default defineConfig({
   plugins: process.env.VITEST ? [sqlText()] : [cloudflare()],
+  run: {
+    tasks: {
+      // Uncached: a cached task is replayed instead of deployed, and gets only the environment variables it lists, so
+      // `--secrets-file` could not read the Telegram secrets from the environment.
+      deploy: {
+        command: "cf deploy --prebuilt --mode production --secrets-file .env",
+        cache: false,
+      },
+    },
+  },
   test: {
     alias: {
       "cloudflare:workers": fileURLToPath(import.meta.resolve("./test/cloudflare-workers.ts")),

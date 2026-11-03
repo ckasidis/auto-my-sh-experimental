@@ -16,4 +16,10 @@ export default defineConfig({
         tanstackStart(),
         viteReact(),
       ],
+  run: {
+    tasks: {
+      // Uncached: a cached task is replayed instead of deployed, and gets only the environment variables it lists.
+      deploy: { command: "cf deploy --prebuilt --mode production", cache: false },
+    },
+  },
 });
