@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./groceries": "./src/groceries.ts",
     "./recurrence": "./src/recurrence.ts"
   },
   "scripts": {

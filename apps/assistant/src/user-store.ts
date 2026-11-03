@@ -2,7 +2,22 @@ import { DurableObject, exports } from "cloudflare:workers";
 import { asc, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import type { GroceryItem } from "utils/groceries";
 import migrations from "../drizzle/migrations.js";
+import {
+  type DateRange,
+  type Ingredient,
+  type IngredientChanges,
+  type Meal,
+  type MealChanges,
+  type NewIngredient,
+  type NewMeal,
+  type NewRecipe,
+  type OwnerRecipes,
+  type Recipe,
+  type RecipeChanges,
+  RecipeBook,
+} from "./recipe-book.ts";
 import { todos } from "./schema.ts";
 import { OWNER } from "./telegram.ts";
 
@@ -43,12 +58,13 @@ const FILTERS: Record<TodoFilter, SQL | undefined> = {
 
 /**
  * The owner's data in their own Durable Object SQLite, apart from the conversation: Pi owns the `Assistant` object's
- * storage, and every interface (the chat's tools, the Mini App) reaches the same data through these RPC methods. Today
- * that is the todos. There is one, named `OWNER`. Every write is idempotent: an add names its id, and an update sets
- * values, so a caller may retry any of them.
+ * storage, and every interface (the chat's tools, the Mini App) reaches the same data through these RPC methods: the
+ * todos, and the recipe book (ingredients, recipes, and the meal prep calendar). There is one, named `OWNER`. Every
+ * write is idempotent: an add names its id, and an update sets values, so a caller may retry any of them.
  */
-export class UserStore extends DurableObject<Env> implements OwnerTodos {
+export class UserStore extends DurableObject<Env> implements OwnerTodos, OwnerRecipes {
   readonly #db = drizzle(this.ctx.storage);
+  readonly #recipes = new RecipeBook(this.#db);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -112,5 +128,57 @@ export class UserStore extends DurableObject<Env> implements OwnerTodos {
       .all();
 
     return deleted.length > 0;
+  }
+
+  listIngredients(): Ingredient[] {
+    return this.#recipes.listIngredients();
+  }
+
+  addIngredient(ingredient: NewIngredient): Ingredient {
+    return this.#recipes.addIngredient(ingredient);
+  }
+
+  updateIngredient(id: string, changes: IngredientChanges): Ingredient | null {
+    return this.#recipes.updateIngredient(id, changes);
+  }
+
+  removeIngredient(id: string): boolean {
+    return this.#recipes.removeIngredient(id);
+  }
+
+  listRecipes(): Recipe[] {
+    return this.#recipes.listRecipes();
+  }
+
+  addRecipe(recipe: NewRecipe): Recipe {
+    return this.#recipes.addRecipe(recipe);
+  }
+
+  updateRecipe(id: string, changes: RecipeChanges): Recipe | null {
+    return this.#recipes.updateRecipe(id, changes);
+  }
+
+  removeRecipe(id: string): boolean {
+    return this.#recipes.removeRecipe(id);
+  }
+
+  listMeals(range?: DateRange): Meal[] {
+    return this.#recipes.listMeals(range);
+  }
+
+  addMeal(meal: NewMeal): Meal {
+    return this.#recipes.addMeal(meal);
+  }
+
+  updateMeal(id: string, changes: MealChanges): Meal | null {
+    return this.#recipes.updateMeal(id, changes);
+  }
+
+  removeMeal(id: string): boolean {
+    return this.#recipes.removeMeal(id);
+  }
+
+  groceryList(range: DateRange): GroceryItem[] {
+    return this.#recipes.groceryList(range);
   }
 }

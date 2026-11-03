@@ -15,5 +15,5 @@ export async function authorizeOwner(authorization: string | undefined): Promise
   }
 }
 
-/** The assistant Worker, over RPC: the todos the chat's tools use, and the chat's schedules. */
+/** The assistant Worker, over RPC: the todos and recipe book the chat's tools use, and the chat's schedules. */
 export const owner = () => env.ASSISTANT;

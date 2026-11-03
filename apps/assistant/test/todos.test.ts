@@ -1,4 +1,3 @@
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -15,43 +14,8 @@ import {
 } from "@earendil-works/pi-durable";
 import { describe, expect, it } from "vite-plus/test";
 import { createTodoTools } from "../src/todos.ts";
-import { type NewTodo, type TodoChanges, type TodoFilter, UserStore } from "../src/user-store.ts";
-
-/**
- * A `UserStore` object on `node:sqlite`, standing in for Durable Object SQLite: the cursor methods Drizzle's
- * `durable-sqlite` driver reads (`toArray`, `next`, `raw`), `transactionSync`, and `blockConcurrencyWhile`.
- */
-const memoryTodos = (): UserStore => {
-  const db = new DatabaseSync(":memory:");
-
-  const exec = (query: string, ...bindings: SQLInputValue[]) => {
-    const statement = db.prepare(query);
-    const columns = statement.columns().map(({ name }) => name);
-
-    // A statement that returns no columns (DDL, writes without RETURNING) is run; any other is read once.
-    const rows = columns.length > 0 ? statement.all(...bindings) : [];
-
-    if (columns.length === 0) statement.run(...bindings);
-
-    return {
-      toArray: () => rows,
-      next: () => ({ value: rows[0], done: rows.length === 0 }),
-      raw: () => ({ toArray: () => rows.map((row) => columns.map((column) => row[column])) }),
-    };
-  };
-
-  const storage = { sql: { exec }, transactionSync: <T>(run: () => T) => run() };
-
-  // SAFETY: `UserStore` and Drizzle use only these parts of the Durable Object state, which run synchronously here.
-  const ctx = { storage, blockConcurrencyWhile: <T>(run: () => T) => run() } as never;
-
-  // SAFETY: `UserStore` reads no bindings.
-  return new UserStore(ctx, {} as never);
-};
-
-/** Marks a value the way a Workers RPC result is marked: with a `Symbol.dispose` disposer. */
-const withDisposer = <T extends object>(value: T): T =>
-  Object.assign(value, { [Symbol.dispose]: () => {} });
+import type { NewTodo, TodoChanges, TodoFilter, UserStore } from "../src/user-store.ts";
+import { memoryStore, withDisposer } from "./memory-store.ts";
 
 /**
  * The store as the tools see it over RPC in production: every array and todo it returns carries a disposer, so a tool
@@ -72,7 +36,7 @@ const todo = (id: string, title: string) => ({ id, title, notes: null, dueAt: nu
 
 describe("UserStore", () => {
   it("adds a todo once per id", () => {
-    const list = memoryTodos();
+    const list = memoryStore();
 
     const first = list.add(todo("a", "Buy milk"));
 
@@ -82,7 +46,7 @@ describe("UserStore", () => {
   });
 
   it("lists open todos soonest due first and undated last", () => {
-    const list = memoryTodos();
+    const list = memoryStore();
 
     list.add(todo("undated", "Undated"));
     list.add({ ...todo("later", "Later"), dueAt: 2_000 });
@@ -96,7 +60,7 @@ describe("UserStore", () => {
   });
 
   it("keeps fields an update leaves out and clears those set to null", () => {
-    const list = memoryTodos();
+    const list = memoryStore();
 
     list.add({ id: "a", title: "Call mum", notes: "Sunday", dueAt: 1_000 });
 
@@ -114,7 +78,7 @@ describe("UserStore", () => {
   });
 
   it("keeps the first completion time when a todo is completed again, and reopens it", () => {
-    const list = memoryTodos();
+    const list = memoryStore();
 
     list.add(todo("a", "Stretch"));
     const completedAt = list.update("a", { done: true })!.completedAt;
@@ -125,7 +89,7 @@ describe("UserStore", () => {
   });
 
   it("deletes a todo, and reports a missing one", () => {
-    const list = memoryTodos();
+    const list = memoryStore();
 
     list.add(todo("a", "Stretch"));
 
@@ -138,7 +102,7 @@ describe("UserStore", () => {
 describe("todo tools", () => {
   it("adds, completes and lists the owner's todos over RPC", async () => {
     const context = BACKGROUND_CONTEXT;
-    const list = memoryTodos();
+    const list = memoryStore();
     const tools = createTodoTools(() => overRpc(list));
     const faux = fauxProvider();
 
@@ -196,7 +160,7 @@ describe("todo tools", () => {
   });
 
   it("refuses a due date without a timezone offset", async () => {
-    const tools = createTodoTools(() => memoryTodos());
+    const tools = createTodoTools(() => memoryStore());
     const add = tools.find(({ name }) => name === "add_todo")!;
 
     // SAFETY: the tool reads only `taskId` from its api.

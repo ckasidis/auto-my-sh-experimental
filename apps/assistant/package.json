@@ -12,6 +12,9 @@
     },
     "./schedule": {
       "types": "./dist/types/src/schedule.d.ts"
+    },
+    "./recipe-book": {
+      "types": "./dist/types/src/recipe-book.d.ts"
     }
   },
   "scripts": {

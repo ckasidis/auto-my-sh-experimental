@@ -15,20 +15,21 @@ import {
   type ScheduleRequest,
   schedulesExtension,
 } from "./schedule.ts";
+import { recipesExtension } from "./recipes.ts";
 import { OWNER } from "./telegram.ts";
 import { todosExtension } from "./todos.ts";
 
 // Available on the Workers Free plan, which rejects models marked `require_workers_paid` (such as GLM 5.3).
 const MODEL_ID = "@cf/zai-org/glm-4.7-flash";
 
-const EXTENSIONS = [chatExtension, schedulesExtension, todosExtension];
+const EXTENSIONS = [chatExtension, schedulesExtension, todosExtension, recipesExtension];
 
 /** The owner's `Assistant` object. Resolve it at each use: a stub is cheap, and a call reaches the object only then. */
 export const assistant = () => exports.Assistant.getByName(OWNER);
 
 /**
  * The owner's assistant: one Durable Object for the one private chat. The Channels gateway hands it the owner's
- * messages; Pi runs the conversation through `PiHarness` with the chat, schedules, and todos extensions, and the chat
+ * messages; Pi runs the conversation through `PiHarness` with the chat, schedules, todos, and recipes extensions, and the chat
  * extension sends each final answer back. Its schedule methods are the Mini App's way to the chat's schedules.
  */
 export class Assistant extends DurableObject<Env> {

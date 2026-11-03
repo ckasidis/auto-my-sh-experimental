@@ -3,6 +3,19 @@ import { ChannelGateway } from "agents/experimental/channels";
 import { assistant } from "./assistant.ts";
 import { telegramChannel } from "./chat.ts";
 import { verifyInitData } from "./init-data.ts";
+import type { GroceryItem } from "utils/groceries";
+import type {
+  DateRange,
+  Ingredient,
+  IngredientChanges,
+  Meal,
+  MealChanges,
+  NewIngredient,
+  NewMeal,
+  NewRecipe,
+  Recipe,
+  RecipeChanges,
+} from "./recipe-book.ts";
 import type { Schedule, ScheduleRequest } from "./schedule.ts";
 import { TELEGRAM_CHANNEL, WEBHOOK_PATH } from "./telegram.ts";
 import {
@@ -19,7 +32,7 @@ export { UserStore } from "./user-store.ts";
 
 /**
  * The Telegram webhook, over HTTP, and, over RPC for the web Worker's service binding, the Mini App's owner check and
- * the owner's todos and schedules without the model; callers check the owner first. The RPC methods are reachable only through a service
+ * the owner's todos, recipe book, and schedules without the model; callers check the owner first. The RPC methods are reachable only through a service
  * binding, never from the internet. Web types the binding from this class's emitted declarations. The return types are
  * written out: inferred ones carry the Durable Object stubs' `Disposable`, and the binding's `Rpc` types turn a single
  * such object into `never`.
@@ -61,6 +74,58 @@ export default class Server extends WorkerEntrypoint<Env> {
 
   async removeTodo(id: string): Promise<boolean> {
     return userStore().remove(id);
+  }
+
+  async listIngredients(): Promise<Ingredient[]> {
+    return userStore().listIngredients();
+  }
+
+  async addIngredient(ingredient: NewIngredient): Promise<Ingredient> {
+    return userStore().addIngredient(ingredient);
+  }
+
+  async updateIngredient(id: string, changes: IngredientChanges): Promise<Ingredient | null> {
+    return userStore().updateIngredient(id, changes);
+  }
+
+  async removeIngredient(id: string): Promise<boolean> {
+    return userStore().removeIngredient(id);
+  }
+
+  async listRecipes(): Promise<Recipe[]> {
+    return userStore().listRecipes();
+  }
+
+  async addRecipe(recipe: NewRecipe): Promise<Recipe> {
+    return userStore().addRecipe(recipe);
+  }
+
+  async updateRecipe(id: string, changes: RecipeChanges): Promise<Recipe | null> {
+    return userStore().updateRecipe(id, changes);
+  }
+
+  async removeRecipe(id: string): Promise<boolean> {
+    return userStore().removeRecipe(id);
+  }
+
+  async listMeals(range?: DateRange): Promise<Meal[]> {
+    return userStore().listMeals(range);
+  }
+
+  async addMeal(meal: NewMeal): Promise<Meal> {
+    return userStore().addMeal(meal);
+  }
+
+  async updateMeal(id: string, changes: MealChanges): Promise<Meal | null> {
+    return userStore().updateMeal(id, changes);
+  }
+
+  async removeMeal(id: string): Promise<boolean> {
+    return userStore().removeMeal(id);
+  }
+
+  async groceryList(range: DateRange): Promise<GroceryItem[]> {
+    return userStore().groceryList(range);
   }
 
   async listSchedules(): Promise<Schedule[]> {
