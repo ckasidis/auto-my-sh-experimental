@@ -27,13 +27,12 @@ dist-ssr
 # AI agent worktrees
 .claude/worktrees/
 
-# Cloudflare CLI: build output, generated types, and local dev state; `.dev.vars` holds each Worker's secrets, and
-# `.env` the API token `cf` reads
+# Cloudflare CLI: build output, generated types, and local dev state; `.env` holds each Worker's secrets
 .cloudflare/
 .dev.vars*
-!.dev.vars.example
 .env
 .env.*
+!.env.example
 
 # TanStack Start
 .tanstack/

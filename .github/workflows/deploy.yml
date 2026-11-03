@@ -31,10 +31,19 @@ jobs:
       - run: vp run ready
       # Validates both builds without credentials, so pull requests from forks run it too.
       - run: vp run -r deploy:dry-run
-      # The assistant deploys first: the web Worker's service binding needs it. The Telegram secrets are
-      # already on the assistant Worker; a deploy keeps them.
+      # The assistant deploys first: the web Worker's service binding needs it. Its deploy uploads the Telegram
+      # secrets with `--secrets-file .env`; here that file only declares the keys, and the environment
+      # supplies the values. An unset repository secret arrives empty and would blank the Worker's, so stop first.
       - if: github.event_name == 'push'
-        run: vp run deploy
+        run: |
+          for name in TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET TELEGRAM_CHAT_ID; do
+            [ -n "${!name}" ] || { echo "::error::Repository secret $name is not set"; exit 1; }
+            echo "$name=" >> apps/assistant/.env
+          done
+          vp run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
