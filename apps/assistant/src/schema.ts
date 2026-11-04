@@ -15,11 +15,22 @@ export const todos = sqliteTable("todos", {
   completedAt: integer("completed_at"),
 });
 
+/** Groups of ingredients, such as "Produce" or "Dairy", for finding them on a list. */
+export const ingredientCategories = sqliteTable("ingredient_categories", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const ingredients = sqliteTable("ingredients", {
   id: text().primaryKey(),
   name: text().notNull(),
   /** The unit every recipe measures it in ("g", "ml", "pcs"); null for one counted without a unit. */
   unit: text(),
+  /** Null when it is in no category; deleting its category clears it. */
+  categoryId: text("category_id").references(() => ingredientCategories.id, {
+    onDelete: "set null",
+  }),
   createdAt: integer("created_at").notNull(),
 });
 

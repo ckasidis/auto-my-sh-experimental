@@ -7,10 +7,12 @@ import type { GroceryItem } from "utils/groceries";
 import type {
   DateRange,
   Ingredient,
+  IngredientCategory,
   IngredientChanges,
   Meal,
   MealChanges,
   NewIngredient,
+  NewIngredientCategory,
   NewMeal,
   NewRecipe,
   Recipe,
@@ -74,6 +76,22 @@ export default class Server extends WorkerEntrypoint<Env> {
 
   async removeTodo(id: string): Promise<boolean> {
     return userStore().remove(id);
+  }
+
+  async listCategories(): Promise<IngredientCategory[]> {
+    return userStore().listCategories();
+  }
+
+  async addCategory(category: NewIngredientCategory): Promise<IngredientCategory> {
+    return userStore().addCategory(category);
+  }
+
+  async renameCategory(id: string, name: string): Promise<IngredientCategory | null> {
+    return userStore().renameCategory(id, name);
+  }
+
+  async removeCategory(id: string): Promise<boolean> {
+    return userStore().removeCategory(id);
   }
 
   async listIngredients(): Promise<Ingredient[]> {

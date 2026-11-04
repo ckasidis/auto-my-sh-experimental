@@ -16,6 +16,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GroceryItem } from "utils/groceries";
 import {
   type Ingredient,
+  type IngredientCategory,
   isCalendarDate,
   type Meal,
   type OwnerRecipes,
@@ -26,6 +27,8 @@ import type { UserStore } from "../src/user-store.ts";
 import { memoryStore, withDisposer } from "./memory-store.ts";
 
 /* Copies of stored values marked as Workers RPC marks a result: every array and object carries a disposer. */
+const rpcCategory = (category: IngredientCategory) => withDisposer({ ...category });
+
 const rpcIngredient = (ingredient: Ingredient) => withDisposer({ ...ingredient });
 
 const rpcRecipe = (recipe: Recipe) =>
@@ -45,6 +48,10 @@ const orNull = <T, R>(value: T | null, mark: (value: T) => R) =>
 
 /** The store as the tools see it over RPC in production, where every result carries disposers. */
 const overRpc = (store: UserStore): OwnerRecipes => ({
+  listCategories: () => withDisposer(store.listCategories().map(rpcCategory)),
+  addCategory: (category) => rpcCategory(store.addCategory(category)),
+  renameCategory: (id, name) => orNull(store.renameCategory(id, name), rpcCategory),
+  removeCategory: (id) => store.removeCategory(id),
   listIngredients: () => withDisposer(store.listIngredients().map(rpcIngredient)),
   addIngredient: (ingredient) => rpcIngredient(store.addIngredient(ingredient)),
   updateIngredient: (id, changes) => orNull(store.updateIngredient(id, changes), rpcIngredient),
@@ -60,13 +67,16 @@ const overRpc = (store: UserStore): OwnerRecipes => ({
   groceryList: (range) => withDisposer(store.groceryList(range).map(rpcGroceryItem)),
 });
 
-/** A store with spaghetti (g), eggs (no unit) and salt, and a carbonara for 2 that uses all three. */
+/**
+ * A store with spaghetti (g), eggs (no unit, in Dairy) and salt, and a carbonara for 2 that uses all three.
+ */
 function stocked() {
   const store = memoryStore();
 
-  store.addIngredient({ id: "spaghetti", name: "Spaghetti", unit: "g" });
-  store.addIngredient({ id: "egg", name: "Egg", unit: null });
-  store.addIngredient({ id: "salt", name: "Salt", unit: null });
+  store.addCategory({ id: "dairy", name: "Dairy" });
+  store.addIngredient({ id: "spaghetti", name: "Spaghetti", unit: "g", categoryId: null });
+  store.addIngredient({ id: "egg", name: "Egg", unit: null, categoryId: "dairy" });
+  store.addIngredient({ id: "salt", name: "Salt", unit: null, categoryId: null });
   store.addRecipe({
     id: "carbonara",
     name: "Carbonara",
@@ -87,12 +97,42 @@ const meal = (id: string, date: string, servings: number) =>
   ({ id, date, slot: "dinner", recipeId: "carbonara", servings }) as const;
 
 describe("recipe book", () => {
+  it("keeps one category per name, and leaves its ingredients in none when it is deleted", () => {
+    const store = stocked();
+
+    expect(store.addCategory({ id: "other", name: " dairy " }).id).toBe("dairy");
+    store.addCategory({ id: "produce", name: "Produce" });
+    expect(store.listCategories().map(({ name }) => name)).toEqual(["Dairy", "Produce"]);
+    expect(() => store.renameCategory("produce", "DAIRY")).toThrow("already exists");
+    expect(store.renameCategory("produce", "Veg")).toMatchObject({ name: "Veg" });
+    expect(store.renameCategory("missing", "x")).toBeNull();
+
+    expect(store.updateIngredient("salt", { categoryId: "produce" })).toMatchObject({
+      categoryId: "produce",
+    });
+    expect(() => store.updateIngredient("salt", { categoryId: "nope" })).toThrow(
+      "No category has id nope",
+    );
+    expect(() =>
+      store.addIngredient({ id: "milk", name: "Milk", unit: "ml", categoryId: "nope" }),
+    ).toThrow("No category has id nope");
+
+    expect(store.removeCategory("dairy")).toBe(true);
+    expect(store.removeCategory("dairy")).toBe(false);
+    expect(store.listIngredients().find(({ id }) => id === "egg")).toMatchObject({
+      categoryId: null,
+    });
+    expect(store.updateIngredient("salt", { categoryId: null })).toMatchObject({
+      categoryId: null,
+    });
+  });
+
   it("keeps one ingredient per name, ignoring case", () => {
     const store = stocked();
 
-    expect(store.addIngredient({ id: "other", name: " spaghetti ", unit: "kg" }).id).toBe(
-      "spaghetti",
-    );
+    const again = { id: "other", name: " spaghetti ", unit: "kg", categoryId: null };
+
+    expect(store.addIngredient(again).id).toBe("spaghetti");
     expect(store.listIngredients().map(({ name }) => name)).toEqual(["Egg", "Salt", "Spaghetti"]);
     expect(() => store.updateIngredient("egg", { name: "SALT" })).toThrow("already exists");
     expect(store.updateIngredient("egg", { name: "Eggs" })).toMatchObject({
@@ -243,11 +283,23 @@ describe("recipe tools", () => {
     faux.setResponses([
       fauxAssistantMessage(
         [
-          fauxToolCall("add_ingredient", { name: "Rice", unit: "g" }),
+          fauxToolCall("add_category", { name: "Grains" }),
           fauxToolCall("add_ingredient", { name: "Egg" }),
         ],
         { stopReason: "toolUse" },
       ),
+      () =>
+        fauxAssistantMessage(
+          [
+            fauxToolCall("add_ingredient", {
+              name: "Rice",
+              unit: "g",
+              categoryId: store.listCategories()[0]!.id,
+            }),
+            fauxToolCall("list_ingredients", {}),
+          ],
+          { stopReason: "toolUse" },
+        ),
       () =>
         fauxAssistantMessage(
           [
@@ -297,8 +349,10 @@ describe("recipe tools", () => {
       );
 
       expect(results.map(({ toolName, isError }) => ({ toolName, isError }))).toEqual([
+        { toolName: "add_category", isError: false },
         { toolName: "add_ingredient", isError: false },
         { toolName: "add_ingredient", isError: false },
+        { toolName: "list_ingredients", isError: false },
         { toolName: "add_recipe", isError: false },
         { toolName: "plan_meal", isError: false },
         { toolName: "get_recipe", isError: false },
@@ -310,9 +364,12 @@ describe("recipe tools", () => {
           "",
         );
 
-      expect(text(4)).toContain("- 150 g Rice");
-      expect(text(4)).toContain("- 1 Egg, beaten");
-      expect(text(5)).toBe("- Egg: 2 (for Fried rice)\n- Rice: 300 g (for Fried rice)");
+      expect(text(3)).toMatch(
+        /^- Egg \(no unit, id: [^)]+\)\n- Rice \(unit: g, category: Grains, id: /,
+      );
+      expect(text(6)).toContain("- 150 g Rice");
+      expect(text(6)).toContain("- 1 Egg, beaten");
+      expect(text(7)).toBe("- Egg: 2 (for Fried rice)\n- Rice: 300 g (for Fried rice)");
       expect(store.listMeals()).toEqual([
         expect.objectContaining({
           id: expect.stringMatching(/^meal:/),

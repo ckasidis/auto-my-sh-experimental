@@ -1,18 +1,25 @@
 import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { type GroceryItem, groceryList } from "utils/groceries";
-import { ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
+import { ingredientCategories, ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
 
-/** Something a recipe is made from, in the one unit every recipe measures it in. */
+/** A group of ingredients, such as "Produce" or "Dairy". */
+export type IngredientCategory = typeof ingredientCategories.$inferSelect;
+
+/** A category to add. Its id is chosen by the caller, so a retried add is the same category. */
+export type NewIngredientCategory = Pick<IngredientCategory, "id" | "name">;
+
+/** Something a recipe is made from, in the one unit every recipe measures it in, and in at most one category. */
 export type Ingredient = typeof ingredients.$inferSelect;
 
 /** An ingredient to add. Its id is chosen by the caller, so a retried add is the same ingredient. */
-export type NewIngredient = Pick<Ingredient, "id" | "name" | "unit">;
+export type NewIngredient = Pick<Ingredient, "id" | "name" | "unit" | "categoryId">;
 
-/** Fields to change; an absent one is kept, and a null unit clears it. */
+/** Fields to change; an absent one is kept, and a null unit or category clears it. */
 export type IngredientChanges = {
   readonly name?: string;
   readonly unit?: string | null;
+  readonly categoryId?: string | null;
 };
 
 /** One of a recipe's ingredients: an amount in the ingredient's unit, for the recipe's servings. */
@@ -76,6 +83,10 @@ type Awaitable<T> = T | Promise<T>;
 
 /** The `UserStore` object's recipe methods, which the recipe tools call; over RPC each returns a promise. */
 export interface OwnerRecipes {
+  listCategories(): Awaitable<IngredientCategory[]>;
+  addCategory(category: NewIngredientCategory): Awaitable<IngredientCategory>;
+  renameCategory(id: string, name: string): Awaitable<IngredientCategory | null>;
+  removeCategory(id: string): Awaitable<boolean>;
   listIngredients(): Awaitable<Ingredient[]>;
   addIngredient(ingredient: NewIngredient): Awaitable<Ingredient>;
   updateIngredient(id: string, changes: IngredientChanges): Awaitable<Ingredient | null>;
@@ -124,15 +135,82 @@ const SLOT_ORDER = sql`case ${meals.slot} when 'breakfast' then 0 when 'lunch' t
 
 type Database = DrizzleSqliteDODatabase<Record<string, never>>;
 
+/** Whether the column holds this name, ignoring case and surrounding spaces. */
+function sameName(
+  column: typeof ingredients.name | typeof ingredientCategories.name,
+  name: string,
+) {
+  return sql`lower(trim(${column})) = lower(trim(${name}))`;
+}
+
 /**
- * The owner's ingredients, recipes and meal prep calendar, in the `UserStore` object's SQLite. A recipe line names an
- * ingredient, so an ingredient a recipe uses is not deleted; deleting a recipe deletes the meals planned with it.
+ * The owner's ingredients and their categories, recipes, and meal prep calendar, in the `UserStore` object's SQLite. A
+ * recipe line names an ingredient, so an ingredient a recipe uses is not deleted; deleting a recipe deletes the meals
+ * planned with it, and deleting a category leaves its ingredients in none.
  */
 export class RecipeBook implements OwnerRecipes {
   readonly #db: Database;
 
   constructor(db: Database) {
     this.#db = db;
+  }
+
+  /** By name, ignoring case. */
+  listCategories(): IngredientCategory[] {
+    return this.#db
+      .select()
+      .from(ingredientCategories)
+      .orderBy(sql`${ingredientCategories.name} collate nocase`, asc(ingredientCategories.id))
+      .all();
+  }
+
+  /**
+   * Adds the category, or returns the one already stored under its id or, ignoring case, its name: there is one
+   * category per name.
+   */
+  addCategory(category: NewIngredientCategory): IngredientCategory {
+    const existing = this.#category(category.id) ?? this.#categoryNamed(category.name);
+
+    if (existing !== undefined) return existing;
+
+    return this.#db
+      .insert(ingredientCategories)
+      .values({ ...category, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+
+  /** Renames the category; null when no category has this id. Refuses a name another category has. */
+  renameCategory(id: string, name: string): IngredientCategory | null {
+    if (this.#category(id) === undefined) return null;
+
+    const clash = this.#categoryNamed(name, id);
+
+    if (clash !== undefined) {
+      throw new Error(`A category named ${clash.name} already exists (id: ${clash.id})`);
+    }
+
+    return this.#db
+      .update(ingredientCategories)
+      .set({ name })
+      .where(eq(ingredientCategories.id, id))
+      .returning()
+      .get()!;
+  }
+
+  /** Deletes the category, leaving its ingredients in none; false when no category has this id. */
+  removeCategory(id: string): boolean {
+    return this.#db.transaction((tx) => {
+      tx.update(ingredients).set({ categoryId: null }).where(eq(ingredients.categoryId, id)).run();
+
+      return (
+        tx
+          .delete(ingredientCategories)
+          .where(eq(ingredientCategories.id, id))
+          .returning({ id: ingredientCategories.id })
+          .all().length > 0
+      );
+    });
   }
 
   /** By name, ignoring case. */
@@ -152,6 +230,8 @@ export class RecipeBook implements OwnerRecipes {
     const existing = this.#ingredient(ingredient.id) ?? this.#ingredientNamed(ingredient.name);
 
     if (existing !== undefined) return existing;
+
+    if (ingredient.categoryId !== null) this.#checkCategory(ingredient.categoryId);
 
     return this.#db
       .insert(ingredients)
@@ -174,11 +254,17 @@ export class RecipeBook implements OwnerRecipes {
       }
     }
 
-    if (changes.name === undefined && changes.unit === undefined) return current;
+    if (changes.categoryId !== undefined && changes.categoryId !== null) {
+      this.#checkCategory(changes.categoryId);
+    }
+
+    const fields = { name: changes.name, unit: changes.unit, categoryId: changes.categoryId };
+
+    if (Object.values(fields).every((value) => value === undefined)) return current;
 
     return this.#db
       .update(ingredients)
-      .set({ name: changes.name, unit: changes.unit })
+      .set(fields)
       .where(eq(ingredients.id, id))
       .returning()
       .get()!;
@@ -375,13 +461,36 @@ export class RecipeBook implements OwnerRecipes {
 
   /** An ingredient with this name, ignoring case and surrounding spaces, other than the one with id `except`. */
   #ingredientNamed(name: string, except?: string): Ingredient | undefined {
-    const sameName = sql`lower(trim(${ingredients.name})) = lower(trim(${name}))`;
+    const named = sameName(ingredients.name, name);
 
     return this.#db
       .select()
       .from(ingredients)
-      .where(except === undefined ? sameName : and(sameName, ne(ingredients.id, except)))
+      .where(except === undefined ? named : and(named, ne(ingredients.id, except)))
       .get();
+  }
+
+  #category(id: string): IngredientCategory | undefined {
+    return this.#db
+      .select()
+      .from(ingredientCategories)
+      .where(eq(ingredientCategories.id, id))
+      .get();
+  }
+
+  /** A category with this name, ignoring case and surrounding spaces, other than the one with id `except`. */
+  #categoryNamed(name: string, except?: string): IngredientCategory | undefined {
+    const named = sameName(ingredientCategories.name, name);
+
+    return this.#db
+      .select()
+      .from(ingredientCategories)
+      .where(except === undefined ? named : and(named, ne(ingredientCategories.id, except)))
+      .get();
+  }
+
+  #checkCategory(id: string): void {
+    if (this.#category(id) === undefined) throw new Error(`No category has id ${id}`);
   }
 
   #recipe(id: string): Recipe | undefined {

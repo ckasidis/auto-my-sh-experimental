@@ -3,6 +3,7 @@ import { defineExtension, section, type ToolRegistration } from "@earendil-works
 import { formatGroceryAmount, type GroceryItem } from "utils/groceries";
 import {
   type Ingredient,
+  type IngredientCategory,
   MEAL_SLOTS,
   type Meal,
   type MealSlot,
@@ -64,8 +65,28 @@ const textResult = <T>(text: string, details: T | null) => ({
   details: details === null ? null : plain(details),
 });
 
-const formatIngredient = (ingredient: Ingredient) =>
-  `- ${ingredient.name} (${ingredient.unit === null ? "no unit" : `unit: ${ingredient.unit}`}, id: ${ingredient.id})`;
+const CategoryId = Type.String({
+  minLength: 1,
+  description: "An id from list_categories or add_category",
+});
+
+type Categories = ReadonlyMap<string, IngredientCategory>;
+
+const byId = (categories: readonly IngredientCategory[]): Categories =>
+  new Map(categories.map((category) => [category.id, category]));
+
+function formatIngredient(ingredient: Ingredient, categories: Categories): string {
+  const unit = ingredient.unit === null ? "no unit" : `unit: ${ingredient.unit}`;
+
+  const category =
+    ingredient.categoryId === null
+      ? ""
+      : `, category: ${categories.get(ingredient.categoryId)?.name ?? ingredient.categoryId}`;
+
+  return `- ${ingredient.name} (${unit}${category}, id: ${ingredient.id})`;
+}
+
+const formatCategory = (category: IngredientCategory) => `- ${category.name} (id: ${category.id})`;
 
 const formatRecipeSummary = (recipe: Recipe) =>
   `- ${recipe.name} (serves ${recipe.servings}, ${recipe.ingredients.length} ingredients, id: ${recipe.id})`;
@@ -122,12 +143,23 @@ const formatGroceryItem = (item: GroceryItem) =>
 type IngredientArguments = {
   readonly name: string;
   readonly unit?: string;
+  readonly categoryId?: string;
 };
 
 type UpdateIngredientArguments = {
   readonly id: string;
   readonly name?: string;
   readonly unit?: string | null;
+  readonly categoryId?: string | null;
+};
+
+type NameArguments = {
+  readonly name: string;
+};
+
+type RenameArguments = {
+  readonly id: string;
+  readonly name: string;
 };
 
 type LineArguments = {
@@ -185,22 +217,79 @@ const toLines = (lines: readonly LineArguments[]): RecipeLine[] =>
   }));
 
 /**
- * The chat's tools over the owner's ingredients, recipes, meal prep calendar and grocery list. `store` resolves the
+ * The chat's tools over the owner's ingredients and their categories, recipes, meal prep calendar and grocery list. `store` resolves the
  * store on each call, so a tool reaches the `UserStore` Durable Object only when it runs. Each is safe to replay: an
  * add's id is derived from its tool task.
  */
 export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[] {
+  /** The categories by id, to name an ingredient's. */
+  const categories = async () => byId(await store().listCategories());
+
   return [
     {
-      name: "list_ingredients",
-      description: "List the owner's ingredients, with each one's unit and id.",
+      name: "list_categories",
+      description: "List the owner's ingredient categories (such as Produce or Dairy), with ids.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async () => {
-        const list = await store().listIngredients();
+        const list = await store().listCategories();
 
         return textResult(
-          list.length === 0 ? "No ingredients." : list.map(formatIngredient).join("\n"),
+          list.length === 0 ? "No categories." : list.map(formatCategory).join("\n"),
+          list,
+        );
+      },
+    },
+    {
+      name: "add_category",
+      description:
+        "Add an ingredient category. Adding a name that exists returns the existing category.",
+      parameters: Type.Object({ name: Name }),
+      replay: "safe",
+      execute: async (args: NameArguments, api) => {
+        const id = `category:${api.taskId}`;
+        const added = await store().addCategory({ id, name: args.name.trim() });
+        const verb = added.id === id ? "Added" : "Already exists";
+
+        return textResult(`${verb}:\n${formatCategory(added)}`, added);
+      },
+    },
+    {
+      name: "rename_category",
+      description: "Rename an ingredient category by id.",
+      parameters: Type.Object({ id: Id, name: Name }),
+      replay: "safe",
+      execute: async (args: RenameArguments) => {
+        const renamed = await store().renameCategory(args.id, args.name.trim());
+
+        if (renamed === null) throw new Error(`No category has id ${args.id}`);
+
+        return textResult(`Renamed:\n${formatCategory(renamed)}`, renamed);
+      },
+    },
+    {
+      name: "delete_category",
+      description: "Delete an ingredient category by id. Its ingredients are kept, in no category.",
+      parameters: Type.Object({ id: Id }),
+      replay: "safe",
+      execute: async (args: IdArguments) => {
+        const removed = await store().removeCategory(args.id);
+
+        return textResult(removed ? `Deleted ${args.id}.` : `No category has id ${args.id}.`, null);
+      },
+    },
+    {
+      name: "list_ingredients",
+      description: "List the owner's ingredients, with each one's unit, category, and id.",
+      parameters: Type.Object({}),
+      replay: "safe",
+      execute: async () => {
+        const [list, named] = await Promise.all([store().listIngredients(), categories()]);
+
+        return textResult(
+          list.length === 0
+            ? "No ingredients."
+            : list.map((ingredient) => formatIngredient(ingredient, named)).join("\n"),
           list,
         );
       },
@@ -209,7 +298,11 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
       name: "add_ingredient",
       description:
         "Add an ingredient recipes can use. Every recipe measures it in its one unit; omit unit for one counted without a unit (eggs) or never measured (salt). Adding a name that exists returns the existing ingredient.",
-      parameters: Type.Object({ name: Name, unit: Type.Optional(Unit) }),
+      parameters: Type.Object({
+        name: Name,
+        unit: Type.Optional(Unit),
+        categoryId: Type.Optional(CategoryId),
+      }),
       replay: "safe",
       execute: async (args: IngredientArguments, api) => {
         const id = `ingredient:${api.taskId}`;
@@ -218,32 +311,35 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
           id,
           name: args.name.trim(),
           unit: args.unit?.trim() ?? null,
+          categoryId: args.categoryId ?? null,
         });
 
         const verb = added.id === id ? "Added" : "Already exists";
 
-        return textResult(`${verb}:\n${formatIngredient(added)}`, added);
+        return textResult(`${verb}:\n${formatIngredient(added, await categories())}`, added);
       },
     },
     {
       name: "update_ingredient",
       description:
-        "Rename an ingredient or change its unit (null clears it). Changing the unit does not convert the quantities recipes already give in the old one.",
+        "Rename an ingredient, or change its unit or category (null clears either). Changing the unit does not convert the quantities recipes already give in the old one.",
       parameters: Type.Object({
         id: Id,
         name: Type.Optional(Name),
         unit: Type.Optional(Type.Union([Unit, Type.Null()])),
+        categoryId: Type.Optional(Type.Union([CategoryId, Type.Null()])),
       }),
       replay: "safe",
       execute: async (args: UpdateIngredientArguments) => {
         const updated = await store().updateIngredient(args.id, {
           name: args.name?.trim(),
           unit: args.unit === undefined || args.unit === null ? args.unit : args.unit.trim(),
+          categoryId: args.categoryId,
         });
 
         if (updated === null) throw new Error(`No ingredient has id ${args.id}`);
 
-        return textResult(`Updated:\n${formatIngredient(updated)}`, updated);
+        return textResult(`Updated:\n${formatIngredient(updated, await categories())}`, updated);
       },
     },
     {
@@ -475,7 +571,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
 
 const RECIPES = `The owner keeps ingredients, recipes, and a meal prep calendar, which you manage with the recipe tools.
 
-- An ingredient has one unit ("g", "ml", "pcs", or none), and every recipe measures it in that unit. Before add_recipe or update_recipe, call list_ingredients and add_ingredient for any that are missing, choosing a unit the recipe's amounts can be given in; convert amounts to it ("1 cup flour" is about 120 g).
+- An ingredient has one unit ("g", "ml", "pcs", or none), and every recipe measures it in that unit. It may be in one category (list_categories); give a new ingredient the category that fits when one exists, and add a category only when the owner asks. Before add_recipe or update_recipe, call list_ingredients and add_ingredient for any that are missing, choosing a unit the recipe's amounts can be given in; convert amounts to it ("1 cup flour" is about 120 g).
 - A recipe's amounts are for its servings. A planned meal is a recipe on a date (YYYY-MM-DD, in the owner's timezone) and slot (breakfast, lunch, dinner, or snack), with its own servings.
 - grocery_list totals what the meals planned in a date range need. It is computed from the calendar each time: it is not a todo, and nothing is added to the todos unless the owner asks.
 - For "this week" and similar ranges, work the dates out from the current time.`;

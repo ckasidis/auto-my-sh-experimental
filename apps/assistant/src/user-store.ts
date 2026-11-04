@@ -7,10 +7,12 @@ import migrations from "../drizzle/migrations.js";
 import {
   type DateRange,
   type Ingredient,
+  type IngredientCategory,
   type IngredientChanges,
   type Meal,
   type MealChanges,
   type NewIngredient,
+  type NewIngredientCategory,
   type NewMeal,
   type NewRecipe,
   type OwnerRecipes,
@@ -128,6 +130,22 @@ export class UserStore extends DurableObject<Env> implements OwnerTodos, OwnerRe
       .all();
 
     return deleted.length > 0;
+  }
+
+  listCategories(): IngredientCategory[] {
+    return this.#recipes.listCategories();
+  }
+
+  addCategory(category: NewIngredientCategory): IngredientCategory {
+    return this.#recipes.addCategory(category);
+  }
+
+  renameCategory(id: string, name: string): IngredientCategory | null {
+    return this.#recipes.renameCategory(id, name);
+  }
+
+  removeCategory(id: string): boolean {
+    return this.#recipes.removeCategory(id);
   }
 
   listIngredients(): Ingredient[] {

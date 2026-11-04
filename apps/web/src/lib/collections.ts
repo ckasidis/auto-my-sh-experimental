@@ -3,6 +3,7 @@ import { createCollection } from "@tanstack/react-db";
 import { QueryClient } from "@tanstack/react-query";
 import type {
   Ingredient,
+  IngredientCategory,
   IngredientChanges,
   Meal,
   MealChanges,
@@ -13,21 +14,25 @@ import type { Schedule } from "assistant/schedule";
 import type { Todo, TodoChanges } from "assistant/user-store";
 import { isCron } from "utils/recurrence";
 import {
+  addCategory,
   addIngredient,
   addMeal,
   addRecipe,
   addSchedule,
   addTodo,
   cancelSchedule,
+  deleteCategory,
   deleteIngredient,
   deleteMeal,
   deleteRecipe,
   deleteTodo,
+  listCategories,
   listIngredients,
   listMeals,
   listRecipes,
   listSchedules,
   listTodos,
+  renameCategory,
   updateIngredient,
   updateMeal,
   updateRecipe,
@@ -151,6 +156,8 @@ function ingredientChanges(changes: Partial<Ingredient>): IngredientChanges {
 
   if (changes.unit !== undefined) result.unit = changes.unit;
 
+  if (changes.categoryId !== undefined) result.categoryId = changes.categoryId;
+
   return result;
 }
 
@@ -186,6 +193,40 @@ function mealChanges(changes: Partial<Meal>): MealChanges {
   return result;
 }
 
+/** The ingredient categories; the only change to one is its name. */
+export const categoryCollection = createCollection(
+  queryCollectionOptions({
+    id: "categories",
+    queryKey: ["categories"],
+    queryFn: () => listCategories(),
+    queryClient,
+    getKey: (category: IngredientCategory) => category.id,
+    onInsert: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ modified }) =>
+          addCategory({ data: { id: modified.id, name: modified.name } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original, modified }) =>
+          renameCategory({ data: { id: original.id, name: modified.name } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onDelete: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original }) => deleteCategory({ data: { id: original.id } })),
+      );
+      // The server takes the category off its ingredients along with it.
+      await Promise.all([collection.utils.refetch(), ingredientCollection.utils.refetch()]);
+    },
+  }),
+);
+
 /** The owner's ingredients, the ones the chat's recipe tools use. A delete the server refuses (in use) rolls back. */
 export const ingredientCollection = createCollection(
   queryCollectionOptions({
@@ -197,7 +238,14 @@ export const ingredientCollection = createCollection(
     onInsert: async ({ transaction, collection }) => {
       await Promise.all(
         transaction.mutations.map(({ modified }) =>
-          addIngredient({ data: { id: modified.id, name: modified.name, unit: modified.unit } }),
+          addIngredient({
+            data: {
+              id: modified.id,
+              name: modified.name,
+              unit: modified.unit,
+              categoryId: modified.categoryId,
+            },
+          }),
         ),
       );
       await collection.utils.refetch();

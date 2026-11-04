@@ -7,6 +7,7 @@ import { TodosPanel } from "@/components/todos-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  categoryCollection,
   ingredientCollection,
   mealCollection,
   recipeCollection,
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/")({
       await Promise.all([
         todoCollection.preload(),
         scheduleCollection.preload(),
+        categoryCollection.preload(),
         ingredientCollection.preload(),
         recipeCollection.preload(),
         mealCollection.preload(),

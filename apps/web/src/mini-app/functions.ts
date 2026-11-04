@@ -4,7 +4,7 @@ import { getRequestHeader } from "@tanstack/react-start/server";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { launchData } from "@/lib/telegram";
-import type { Ingredient, Meal, Recipe } from "assistant/recipe-book";
+import type { Ingredient, IngredientCategory, Meal, Recipe } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo } from "assistant/user-store";
 import { copyRecurrence } from "utils/recurrence";
@@ -99,11 +99,26 @@ const Steps = Type.Array(Type.String({ minLength: 1, maxLength: 2_000 }), { maxI
 /** Ids the app chooses are `<kind>:app:<uuid>`, kept apart from the `<kind>:<task id>` ones the chat's tools derive. */
 const appId = (kind: string) => Type.String({ pattern: `^${kind}:app:[\\w-]{1,100}$` });
 
-const NewIngredientInput = Type.Object({ id: appId("ingredient"), name: Name, unit: Unit });
+const CategoryId = Type.Union([Id, Type.Null()]);
+
+const NewCategoryInput = Type.Object({ id: appId("category"), name: Name });
+
+const CategoryRenameInput = Type.Object({ id: Id, name: Name });
+
+const NewIngredientInput = Type.Object({
+  id: appId("ingredient"),
+  name: Name,
+  unit: Unit,
+  categoryId: CategoryId,
+});
 
 const IngredientUpdateInput = Type.Object({
   id: Id,
-  changes: Type.Object({ name: Type.Optional(Name), unit: Type.Optional(Unit) }),
+  changes: Type.Object({
+    name: Type.Optional(Name),
+    unit: Type.Optional(Unit),
+    categoryId: Type.Optional(CategoryId),
+  }),
 });
 
 const NewRecipeInput = Type.Object({
@@ -208,6 +223,33 @@ export const cancelSchedule = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
   .handler(async ({ data }) => owner().cancelSchedule(data.id));
+
+/** Every ingredient category, by name. */
+export const listCategories = createServerFn({ method: "GET" })
+  .middleware([ownerOnly])
+  .handler(async (): Promise<IngredientCategory[]> => plain(await owner().listCategories()));
+
+export const addCategory = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof NewCategoryInput>) => Value.Parse(NewCategoryInput, input))
+  .handler(async ({ data }): Promise<IngredientCategory> => plain(await owner().addCategory(data)));
+
+export const renameCategory = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof CategoryRenameInput>) => Value.Parse(CategoryRenameInput, input))
+  .handler(async ({ data }): Promise<IngredientCategory> => {
+    const renamed = await owner().renameCategory(data.id, data.name);
+
+    if (renamed === null) throw new Error(`No category has id ${data.id}`);
+
+    return plain(renamed);
+  });
+
+/** Deletes the category; its ingredients are kept, in none. */
+export const deleteCategory = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
+  .handler(async ({ data }) => owner().removeCategory(data.id));
 
 /** Every ingredient, by name. */
 export const listIngredients = createServerFn({ method: "GET" })
