@@ -22,6 +22,20 @@
       "when": 1793795207430,
       "tag": "0002_ingredient_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793799893843,
+      "tag": "0003_other_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793800831382,
+      "tag": "0004_category_order",
+      "breakpoints": true
     }
   ]
 }

@@ -3,14 +3,20 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { WeekNav } from "@/components/week-nav";
-import { ingredientCollection, mealCollection, recipeCollection } from "@/lib/collections";
+import {
+  categoryCollection,
+  ingredientCollection,
+  mealCollection,
+  recipeCollection,
+} from "@/lib/collections";
 import { addDays, formatDateRange } from "@/lib/dates";
 import { webApp } from "@/lib/telegram";
-import { formatGroceryAmount, groceryList } from "utils/groceries";
+import { formatGroceryAmount, groceryList, groupGroceries } from "utils/groceries";
 
 /**
- * What to buy for the week's planned meals: each recipe scaled to its meal's servings, summed per ingredient. It is
- * worked out from the calendar as it changes, as the chat's grocery_list tool does.
+ * What to buy for the week's planned meals: each recipe scaled to its meal's servings, summed per ingredient, under a
+ * heading per category with Other, the default, last. It is worked out from the calendar as it changes, as the chat's grocery_list
+ * tool does.
  */
 export function GroceriesPanel({
   monday,
@@ -29,21 +35,33 @@ export function GroceriesPanel({
 
   const recipes = useLiveQuery((q) => q.from({ recipe: recipeCollection }));
   const ingredients = useLiveQuery((q) => q.from({ ingredient: ingredientCollection }));
+  const categories = useLiveQuery((q) => q.from({ category: categoryCollection }));
   const [copied, setCopied] = useState(false);
 
-  if (meals.isLoadingError || recipes.isLoadingError || ingredients.isLoadingError) {
+  if (
+    meals.isLoadingError ||
+    recipes.isLoadingError ||
+    ingredients.isLoadingError ||
+    categories.isLoadingError
+  ) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">Couldn't load the groceries.</p>
     );
   }
 
-  const items = groceryList(meals.data, recipes.data, ingredients.data);
+  const items = groceryList(meals.data, recipes.data, ingredients.data, categories.data);
+  const groups = groupGroceries(items);
+
+  // Headings only help between categories; a list all in one, such as Other before any others exist, is a plain list.
+  const headed = groups.length > 1;
 
   const copy = async () => {
-    const text = [
-      `Groceries for ${formatDateRange(monday, sunday)}`,
-      ...items.map((item) => `- ${item.name}: ${formatGroceryAmount(item)}`),
-    ].join("\n");
+    const lines = groups.flatMap(({ category, items: group }) => [
+      ...(headed ? ["", `${category}:`] : []),
+      ...group.map((item) => `- ${item.name}: ${formatGroceryAmount(item)}`),
+    ]);
+
+    const text = [`Groceries for ${formatDateRange(monday, sunday)}`, ...lines].join("\n");
 
     await navigator.clipboard.writeText(text);
     webApp()?.HapticFeedback?.notificationOccurred("success");
@@ -62,19 +80,28 @@ export function GroceriesPanel({
         </p>
       ) : (
         <>
-          <ul className="divide-y overflow-hidden rounded-xl bg-card">
-            {items.map((item) => (
-              <li key={item.ingredientId} className="flex items-baseline gap-3 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[0.95rem] leading-snug">{item.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.recipes.join(", ")}
-                  </p>
-                </div>
-                <span className="text-sm whitespace-nowrap">{formatGroceryAmount(item)}</span>
-              </li>
-            ))}
-          </ul>
+          {groups.map(({ categoryId, category, items: group }) => (
+            <section key={categoryId} className="flex flex-col gap-2">
+              {headed && (
+                <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  {category}
+                </h3>
+              )}
+              <ul className="divide-y overflow-hidden rounded-xl bg-card">
+                {group.map((item) => (
+                  <li key={item.ingredientId} className="flex items-baseline gap-3 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[0.95rem] leading-snug">{item.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {item.recipes.join(", ")}
+                      </p>
+                    </div>
+                    <span className="text-sm whitespace-nowrap">{formatGroceryAmount(item)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <Button variant="outline" onClick={copy}>
             {copied ? <CheckIcon /> : <CopyIcon />}
             {copied ? "Copied" : "Copy list"}

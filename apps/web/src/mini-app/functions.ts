@@ -105,6 +105,8 @@ const NewCategoryInput = Type.Object({ id: appId("category"), name: Name });
 
 const CategoryRenameInput = Type.Object({ id: Id, name: Name });
 
+const CategoryOrderInput = Type.Object({ ids: Type.Array(Id, { minItems: 1, maxItems: 100 }) });
+
 const NewIngredientInput = Type.Object({
   id: appId("ingredient"),
   name: Name,
@@ -245,7 +247,15 @@ export const renameCategory = createServerFn({ method: "POST" })
     return plain(renamed);
   });
 
-/** Deletes the category; its ingredients are kept, in none. */
+/** Puts the categories in this order, first to last; Other stays last. */
+export const reorderCategories = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof CategoryOrderInput>) => Value.Parse(CategoryOrderInput, input))
+  .handler(async ({ data }): Promise<IngredientCategory[]> =>
+    plain(await owner().reorderCategories(data.ids)),
+  );
+
+/** Deletes the category; its ingredients move to Other, the default. */
 export const deleteCategory = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))

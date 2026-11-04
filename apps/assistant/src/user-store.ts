@@ -148,6 +148,10 @@ export class UserStore extends DurableObject<Env> implements OwnerTodos, OwnerRe
     return this.#recipes.removeCategory(id);
   }
 
+  reorderCategories(ids: readonly string[]): IngredientCategory[] {
+    return this.#recipes.reorderCategories(ids);
+  }
+
   listIngredients(): Ingredient[] {
     return this.#recipes.listIngredients();
   }

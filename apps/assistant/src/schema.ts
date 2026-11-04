@@ -15,10 +15,12 @@ export const todos = sqliteTable("todos", {
   completedAt: integer("completed_at"),
 });
 
-/** Groups of ingredients, such as "Produce" or "Dairy", for finding them on a list. */
+/** Groups of ingredients, such as "Produce" or "Dairy", for finding them on a list; "Other" is the default. */
 export const ingredientCategories = sqliteTable("ingredient_categories", {
   id: text().primaryKey(),
   name: text().notNull(),
+  /** Where lists show it, lowest first; the default category is always last, whatever its position. */
+  position: integer().notNull().default(0),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -27,7 +29,10 @@ export const ingredients = sqliteTable("ingredients", {
   name: text().notNull(),
   /** The unit every recipe measures it in ("g", "ml", "pcs"); null for one counted without a unit. */
   unit: text(),
-  /** Null when it is in no category; deleting its category clears it. */
+  /**
+   * Its category; "Other" (`category:other`, added by a migration) unless it was given another. Nullable only because
+   * SQLite cannot add a NOT NULL column with a reference; the store never writes null.
+   */
   categoryId: text("category_id").references(() => ingredientCategories.id, {
     onDelete: "set null",
   }),

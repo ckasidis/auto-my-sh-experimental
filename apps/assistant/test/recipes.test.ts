@@ -52,6 +52,7 @@ const overRpc = (store: UserStore): OwnerRecipes => ({
   addCategory: (category) => rpcCategory(store.addCategory(category)),
   renameCategory: (id, name) => orNull(store.renameCategory(id, name), rpcCategory),
   removeCategory: (id) => store.removeCategory(id),
+  reorderCategories: (ids) => withDisposer(store.reorderCategories(ids).map(rpcCategory)),
   listIngredients: () => withDisposer(store.listIngredients().map(rpcIngredient)),
   addIngredient: (ingredient) => rpcIngredient(store.addIngredient(ingredient)),
   updateIngredient: (id, changes) => orNull(store.updateIngredient(id, changes), rpcIngredient),
@@ -97,12 +98,21 @@ const meal = (id: string, date: string, servings: number) =>
   ({ id, date, slot: "dinner", recipeId: "carbonara", servings }) as const;
 
 describe("recipe book", () => {
-  it("keeps one category per name, and leaves its ingredients in none when it is deleted", () => {
+  it("keeps one category per name, with Other the default and last", () => {
     const store = stocked();
 
-    expect(store.addCategory({ id: "other", name: " dairy " }).id).toBe("dairy");
+    expect(store.addCategory({ id: "dup", name: " dairy " }).id).toBe("dairy");
+    expect(store.addCategory({ id: "dup", name: "OTHER" }).id).toBe("category:other");
     store.addCategory({ id: "produce", name: "Produce" });
-    expect(store.listCategories().map(({ name }) => name)).toEqual(["Dairy", "Produce"]);
+    store.addCategory({ id: "veg", name: "Vegetables" });
+    expect(store.listCategories().map(({ name }) => name)).toEqual([
+      "Dairy",
+      "Produce",
+      "Vegetables",
+      "Other",
+    ]);
+    expect(() => store.renameCategory("category:other", "Misc")).toThrow("default category");
+    expect(() => store.removeCategory("category:other")).toThrow("default category");
     expect(() => store.renameCategory("produce", "DAIRY")).toThrow("already exists");
     expect(store.renameCategory("produce", "Veg")).toMatchObject({ name: "Veg" });
     expect(store.renameCategory("missing", "x")).toBeNull();
@@ -117,13 +127,17 @@ describe("recipe book", () => {
       store.addIngredient({ id: "milk", name: "Milk", unit: "ml", categoryId: "nope" }),
     ).toThrow("No category has id nope");
 
+    expect(store.listIngredients().find(({ id }) => id === "spaghetti")).toMatchObject({
+      categoryId: "category:other",
+    });
+
     expect(store.removeCategory("dairy")).toBe(true);
     expect(store.removeCategory("dairy")).toBe(false);
     expect(store.listIngredients().find(({ id }) => id === "egg")).toMatchObject({
-      categoryId: null,
+      categoryId: "category:other",
     });
     expect(store.updateIngredient("salt", { categoryId: null })).toMatchObject({
-      categoryId: null,
+      categoryId: "category:other",
     });
   });
 
@@ -139,6 +153,23 @@ describe("recipe book", () => {
       name: "Eggs",
       unit: null,
     });
+  });
+
+  it("lists categories in the owner's order, new ones last and Other after every one", () => {
+    const store = stocked();
+
+    store.addCategory({ id: "produce", name: "Produce" });
+    store.addCategory({ id: "bakery", name: "Bakery" });
+
+    const names = () => store.listCategories().map(({ name }) => name);
+
+    expect(names()).toEqual(["Dairy", "Produce", "Bakery", "Other"]);
+    expect(
+      store.reorderCategories(["bakery", "category:other", "nope", "dairy"]).map(({ id }) => id),
+    ).toEqual(["bakery", "dairy", "produce", "category:other"]);
+
+    store.addCategory({ id: "frozen", name: "Frozen" });
+    expect(names()).toEqual(["Bakery", "Dairy", "Produce", "Frozen", "Other"]);
   });
 
   it("stores a recipe's lines and steps in order, and replaces them on update", () => {
@@ -227,7 +258,7 @@ describe("recipe book", () => {
     expect(store.listMeals()).toEqual([]);
   });
 
-  it("totals the grocery list over the range, scaled to each meal's servings", () => {
+  it("totals the grocery list over the range, scaled to each meal's servings, by category", () => {
     const store = stocked();
 
     store.addMeal(meal("a", "2026-11-04", 2));
@@ -239,6 +270,8 @@ describe("recipe book", () => {
         ingredientId: "egg",
         name: "Egg",
         unit: null,
+        categoryId: "dairy",
+        category: "Dairy",
         quantity: 7.5,
         unmeasured: false,
         recipes: ["Carbonara"],
@@ -247,6 +280,8 @@ describe("recipe book", () => {
         ingredientId: "salt",
         name: "Salt",
         unit: null,
+        categoryId: "category:other",
+        category: "Other",
         quantity: null,
         unmeasured: true,
         recipes: ["Carbonara"],
@@ -255,6 +290,8 @@ describe("recipe book", () => {
         ingredientId: "spaghetti",
         name: "Spaghetti",
         unit: "g",
+        categoryId: "category:other",
+        category: "Other",
         quantity: 500,
         unmeasured: false,
         recipes: ["Carbonara"],
@@ -365,11 +402,13 @@ describe("recipe tools", () => {
         );
 
       expect(text(3)).toMatch(
-        /^- Egg \(no unit, id: [^)]+\)\n- Rice \(unit: g, category: Grains, id: /,
+        /^- Egg \(no unit, category: Other, id: [^)]+\)\n- Rice \(unit: g, category: Grains, id: /,
       );
       expect(text(6)).toContain("- 150 g Rice");
       expect(text(6)).toContain("- 1 Egg, beaten");
-      expect(text(7)).toBe("- Egg: 2 (for Fried rice)\n- Rice: 300 g (for Fried rice)");
+      expect(text(7)).toBe(
+        "Grains:\n- Rice: 300 g (for Fried rice)\n\nOther:\n- Egg: 2 (for Fried rice)",
+      );
       expect(store.listMeals()).toEqual([
         expect.objectContaining({
           id: expect.stringMatching(/^meal:/),

@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
-import { formatGroceryAmount, groceryList } from "../src/groceries.ts";
+import { formatGroceryAmount, groceryList, groupGroceries } from "../src/groceries.ts";
 
 const ingredients = [
-  { id: "flour", name: "Flour", unit: "g" },
-  { id: "milk", name: "milk", unit: "ml" },
-  { id: "salt", name: "Salt", unit: null },
+  { id: "flour", name: "Flour", unit: "g", categoryId: "baking" },
+  { id: "milk", name: "milk", unit: "ml", categoryId: "dairy" },
+  { id: "salt", name: "Salt", unit: null, categoryId: null },
+  { id: "butter", name: "Butter", unit: "g", categoryId: "dairy" },
+];
+
+// In the owner's order, not by name: Dairy, Baking, Vegetables. Other is last whatever its position.
+const categories = [
+  { id: "dairy", name: "Dairy", position: 1 },
+  { id: "category:other", name: "Other", position: 0 },
+  { id: "baking", name: "Baking", position: 2 },
+  { id: "veg", name: "Vegetables", position: 3 },
 ];
 
 const recipes = [
@@ -27,7 +36,7 @@ const recipes = [
 ];
 
 describe("grocery list", () => {
-  it("scales each meal's lines to its servings and sums them per ingredient, by name", () => {
+  it("scales each meal's lines to its servings and sums them per ingredient", () => {
     const list = groceryList(
       [
         { recipeId: "pancakes", servings: 2 },
@@ -36,33 +45,81 @@ describe("grocery list", () => {
       ],
       recipes,
       ingredients,
+      categories,
     );
 
     expect(list).toEqual([
       {
-        ingredientId: "flour",
-        name: "Flour",
-        unit: "g",
-        quantity: 100.3,
-        unmeasured: false,
-        recipes: ["Pancakes", "Bread"],
-      },
-      {
         ingredientId: "milk",
         name: "milk",
         unit: "ml",
+        categoryId: "dairy",
+        category: "Dairy",
         quantity: 150,
         unmeasured: false,
         recipes: ["Pancakes"],
       },
       {
+        ingredientId: "flour",
+        name: "Flour",
+        unit: "g",
+        categoryId: "baking",
+        category: "Baking",
+        quantity: 100.3,
+        unmeasured: false,
+        recipes: ["Pancakes", "Bread"],
+      },
+      {
         ingredientId: "salt",
         name: "Salt",
         unit: null,
+        categoryId: "category:other",
+        category: "Other",
         quantity: null,
         unmeasured: true,
         recipes: ["Pancakes"],
       },
+    ]);
+  });
+
+  it("sorts by the owner's category order, then by name, with the default category last", () => {
+    const pantry = [
+      ...ingredients,
+      { id: "yeast", name: "Yeast", unit: "g", categoryId: "gone" },
+      { id: "apple", name: "Apple", unit: null, categoryId: "category:other" },
+      { id: "zucchini", name: "Zucchini", unit: null, categoryId: "veg" },
+    ];
+
+    const everything = {
+      id: "everything",
+      name: "Everything",
+      servings: 1,
+      ingredients: pantry.map(({ id }) => ({ ingredientId: id, quantity: 1 })),
+    };
+
+    const list = groceryList(
+      [{ recipeId: "everything", servings: 1 }],
+      [everything],
+      pantry,
+      categories,
+    );
+
+    expect(list.map(({ name, category }) => [category, name])).toEqual([
+      ["Dairy", "Butter"],
+      ["Dairy", "milk"],
+      ["Baking", "Flour"],
+      ["Vegetables", "Zucchini"],
+      ["Other", "Apple"],
+      ["Other", "Salt"],
+      ["Other", "Yeast"],
+    ]);
+    expect(
+      groupGroceries(list).map(({ category, items }) => [category, items.map(({ name }) => name)]),
+    ).toEqual([
+      ["Dairy", ["Butter", "milk"]],
+      ["Baking", ["Flour"]],
+      ["Vegetables", ["Zucchini"]],
+      ["Other", ["Apple", "Salt", "Yeast"]],
     ]);
   });
 

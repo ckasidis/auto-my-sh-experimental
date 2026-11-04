@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarClockIcon, ListTodoIcon, UtensilsIcon, XIcon } from "lucide-react";
-import { useEffect } from "react";
+import { CalendarClockIcon, ListTodoIcon, SettingsIcon, UtensilsIcon, XIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { MealsPanel } from "@/components/meals-panel";
 import { SchedulesPanel } from "@/components/schedules-panel";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { TodosPanel } from "@/components/todos-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/")({
 function Home() {
   const { inTelegram } = Route.useLoaderData();
   const [failure, dismiss] = useFailure();
+  const [settings, setSettings] = useState(false);
 
   useEffect(startWebApp, []);
 
@@ -71,20 +73,30 @@ function Home() {
         </div>
       )}
       <Tabs defaultValue="todos">
-        <TabsList className="w-full bg-card">
-          <TabsTrigger value="todos">
-            <ListTodoIcon />
-            Todos
-          </TabsTrigger>
-          <TabsTrigger value="schedules">
-            <CalendarClockIcon />
-            Schedules
-          </TabsTrigger>
-          <TabsTrigger value="meals">
-            <UtensilsIcon />
-            Meals
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-2">
+          <TabsList className="flex-1 bg-card">
+            <TabsTrigger value="todos">
+              <ListTodoIcon />
+              Todos
+            </TabsTrigger>
+            <TabsTrigger value="schedules">
+              <CalendarClockIcon />
+              Schedules
+            </TabsTrigger>
+            <TabsTrigger value="meals">
+              <UtensilsIcon />
+              Meals
+            </TabsTrigger>
+          </TabsList>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSettings(true)}
+            aria-label="Settings"
+          >
+            <SettingsIcon />
+          </Button>
+        </div>
         <TabsContent value="todos" className="pt-3">
           <TodosPanel />
         </TabsContent>
@@ -95,6 +107,7 @@ function Home() {
           <MealsPanel />
         </TabsContent>
       </Tabs>
+      <SettingsDialog open={settings} onClose={() => setSettings(false)} />
     </main>
   );
 }

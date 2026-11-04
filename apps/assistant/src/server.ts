@@ -94,6 +94,10 @@ export default class Server extends WorkerEntrypoint<Env> {
     return userStore().removeCategory(id);
   }
 
+  async reorderCategories(ids: string[]): Promise<IngredientCategory[]> {
+    return userStore().reorderCategories(ids);
+  }
+
   async listIngredients(): Promise<Ingredient[]> {
     return userStore().listIngredients();
   }

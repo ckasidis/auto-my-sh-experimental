@@ -1,21 +1,23 @@
 import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
-import { type GroceryItem, groceryList } from "utils/groceries";
+import { type GroceryItem, groceryList, OTHER_CATEGORY } from "utils/groceries";
 import { ingredientCategories, ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
 
-/** A group of ingredients, such as "Produce" or "Dairy". */
+/** A group of ingredients, such as "Produce" or "Dairy"; `OTHER_CATEGORY` is the default one. */
 export type IngredientCategory = typeof ingredientCategories.$inferSelect;
 
 /** A category to add. Its id is chosen by the caller, so a retried add is the same category. */
 export type NewIngredientCategory = Pick<IngredientCategory, "id" | "name">;
 
-/** Something a recipe is made from, in the one unit every recipe measures it in, and in at most one category. */
-export type Ingredient = typeof ingredients.$inferSelect;
+type IngredientRow = typeof ingredients.$inferSelect;
 
-/** An ingredient to add. Its id is chosen by the caller, so a retried add is the same ingredient. */
-export type NewIngredient = Pick<Ingredient, "id" | "name" | "unit" | "categoryId">;
+/** Something a recipe is made from, in the one unit every recipe measures it in, and in one category. */
+export type Ingredient = Omit<IngredientRow, "categoryId"> & { readonly categoryId: string };
 
-/** Fields to change; an absent one is kept, and a null unit or category clears it. */
+/** An ingredient to add, in the default category when `categoryId` is null. Its id is chosen by the caller, so a retried add is the same ingredient. */
+export type NewIngredient = Pick<IngredientRow, "id" | "name" | "unit" | "categoryId">;
+
+/** Fields to change; an absent one is kept, a null unit clears it, and a null category is the default one. */
 export type IngredientChanges = {
   readonly name?: string;
   readonly unit?: string | null;
@@ -87,6 +89,7 @@ export interface OwnerRecipes {
   addCategory(category: NewIngredientCategory): Awaitable<IngredientCategory>;
   renameCategory(id: string, name: string): Awaitable<IngredientCategory | null>;
   removeCategory(id: string): Awaitable<boolean>;
+  reorderCategories(ids: readonly string[]): Awaitable<IngredientCategory[]>;
   listIngredients(): Awaitable<Ingredient[]>;
   addIngredient(ingredient: NewIngredient): Awaitable<Ingredient>;
   updateIngredient(id: string, changes: IngredientChanges): Awaitable<Ingredient | null>;
@@ -135,6 +138,12 @@ const SLOT_ORDER = sql`case ${meals.slot} when 'breakfast' then 0 when 'lunch' t
 
 type Database = DrizzleSqliteDODatabase<Record<string, never>>;
 
+/** The column allows null, which the store never writes after the default category's migration; read one as it. */
+const categorized = (row: IngredientRow): Ingredient => ({
+  ...row,
+  categoryId: row.categoryId ?? OTHER_CATEGORY.id,
+});
+
 /** Whether the column holds this name, ignoring case and surrounding spaces. */
 function sameName(
   column: typeof ingredients.name | typeof ingredientCategories.name,
@@ -146,7 +155,8 @@ function sameName(
 /**
  * The owner's ingredients and their categories, recipes, and meal prep calendar, in the `UserStore` object's SQLite. A
  * recipe line names an ingredient, so an ingredient a recipe uses is not deleted; deleting a recipe deletes the meals
- * planned with it, and deleting a category leaves its ingredients in none.
+ * planned with it. Every ingredient is in a category, `OTHER_CATEGORY` unless given another; that one is always there,
+ * and deleting another moves its ingredients to it.
  */
 export class RecipeBook implements OwnerRecipes {
   readonly #db: Database;
@@ -155,34 +165,73 @@ export class RecipeBook implements OwnerRecipes {
     this.#db = db;
   }
 
-  /** By name, ignoring case. */
+  /** In the owner's order, with the default category last. */
   listCategories(): IngredientCategory[] {
     return this.#db
       .select()
       .from(ingredientCategories)
-      .orderBy(sql`${ingredientCategories.name} collate nocase`, asc(ingredientCategories.id))
+      .orderBy(
+        sql`${ingredientCategories.id} = ${OTHER_CATEGORY.id}`,
+        asc(ingredientCategories.position),
+        sql`${ingredientCategories.name} collate nocase`,
+        asc(ingredientCategories.id),
+      )
       .all();
   }
 
   /**
-   * Adds the category, or returns the one already stored under its id or, ignoring case, its name: there is one
-   * category per name.
+   * Adds the category after the others, or returns the one already stored under its id or, ignoring case, its name:
+   * there is one category per name.
    */
   addCategory(category: NewIngredientCategory): IngredientCategory {
     const existing = this.#category(category.id) ?? this.#categoryNamed(category.name);
 
     if (existing !== undefined) return existing;
 
+    const last = this.#db
+      .select({ position: sql<number>`coalesce(max(${ingredientCategories.position}), 0)` })
+      .from(ingredientCategories)
+      .get();
+
     return this.#db
       .insert(ingredientCategories)
-      .values({ ...category, createdAt: Date.now() })
+      .values({ ...category, position: (last?.position ?? 0) + 1, createdAt: Date.now() })
       .returning()
       .get();
   }
 
-  /** Renames the category; null when no category has this id. Refuses a name another category has. */
+  /**
+   * Puts the categories in this order, and returns them in it. Categories the order leaves out (one added meanwhile)
+   * follow the named ones in the order they had, and unknown ids are skipped; the default category stays last.
+   */
+  reorderCategories(ids: readonly string[]): IngredientCategory[] {
+    const current = this.listCategories().flatMap(({ id }) =>
+      id === OTHER_CATEGORY.id ? [] : [id],
+    );
+
+    const named = [...new Set(ids)].filter((id) => current.includes(id));
+    const order = [...named, ...current.filter((id) => !named.includes(id))];
+
+    this.#db.transaction((tx) => {
+      for (const [position, id] of order.entries()) {
+        tx.update(ingredientCategories)
+          .set({ position: position + 1 })
+          .where(eq(ingredientCategories.id, id))
+          .run();
+      }
+    });
+
+    return this.listCategories();
+  }
+
+  /**
+   * Renames the category; null when no category has this id. Refuses a name another category has, and the default
+   * category, whose name lists show for every ingredient not given another.
+   */
   renameCategory(id: string, name: string): IngredientCategory | null {
     if (this.#category(id) === undefined) return null;
+
+    if (id === OTHER_CATEGORY.id) throw new Error(`${OTHER_CATEGORY.name} is the default category`);
 
     const clash = this.#categoryNamed(name, id);
 
@@ -198,10 +247,17 @@ export class RecipeBook implements OwnerRecipes {
       .get()!;
   }
 
-  /** Deletes the category, leaving its ingredients in none; false when no category has this id. */
+  /** Deletes the category, moving its ingredients to the default one; false when no category has this id. */
   removeCategory(id: string): boolean {
+    if (id === OTHER_CATEGORY.id) {
+      throw new Error(`${OTHER_CATEGORY.name} is the default category, so it cannot be deleted`);
+    }
+
     return this.#db.transaction((tx) => {
-      tx.update(ingredients).set({ categoryId: null }).where(eq(ingredients.categoryId, id)).run();
+      tx.update(ingredients)
+        .set({ categoryId: OTHER_CATEGORY.id })
+        .where(eq(ingredients.categoryId, id))
+        .run();
 
       return (
         tx
@@ -219,7 +275,8 @@ export class RecipeBook implements OwnerRecipes {
       .select()
       .from(ingredients)
       .orderBy(sql`${ingredients.name} collate nocase`, asc(ingredients.id))
-      .all();
+      .all()
+      .map(categorized);
   }
 
   /**
@@ -231,13 +288,17 @@ export class RecipeBook implements OwnerRecipes {
 
     if (existing !== undefined) return existing;
 
-    if (ingredient.categoryId !== null) this.#checkCategory(ingredient.categoryId);
+    const categoryId = ingredient.categoryId ?? OTHER_CATEGORY.id;
 
-    return this.#db
-      .insert(ingredients)
-      .values({ ...ingredient, createdAt: Date.now() })
-      .returning()
-      .get();
+    this.#checkCategory(categoryId);
+
+    return categorized(
+      this.#db
+        .insert(ingredients)
+        .values({ ...ingredient, categoryId, createdAt: Date.now() })
+        .returning()
+        .get(),
+    );
   }
 
   /** Applies the changes; null when no ingredient has this id. Refuses a name another ingredient has. */
@@ -254,20 +315,18 @@ export class RecipeBook implements OwnerRecipes {
       }
     }
 
-    if (changes.categoryId !== undefined && changes.categoryId !== null) {
-      this.#checkCategory(changes.categoryId);
-    }
+    const categoryId =
+      changes.categoryId === undefined ? undefined : (changes.categoryId ?? OTHER_CATEGORY.id);
 
-    const fields = { name: changes.name, unit: changes.unit, categoryId: changes.categoryId };
+    if (categoryId !== undefined) this.#checkCategory(categoryId);
+
+    const fields = { name: changes.name, unit: changes.unit, categoryId };
 
     if (Object.values(fields).every((value) => value === undefined)) return current;
 
-    return this.#db
-      .update(ingredients)
-      .set(fields)
-      .where(eq(ingredients.id, id))
-      .returning()
-      .get()!;
+    return categorized(
+      this.#db.update(ingredients).set(fields).where(eq(ingredients.id, id)).returning().get()!,
+    );
   }
 
   /** Deletes the ingredient; false when no ingredient has this id. Refuses one a recipe still uses. */
@@ -450,24 +509,36 @@ export class RecipeBook implements OwnerRecipes {
     );
   }
 
-  /** What to buy for the meals planned in the range: each recipe scaled to its meal's servings, summed per ingredient. */
+  /**
+   * What to buy for the meals planned in the range: each recipe scaled to its meal's servings, summed per ingredient,
+   * by category.
+   */
   groceryList(range: DateRange): GroceryItem[] {
-    return groceryList(this.listMeals(range), this.listRecipes(), this.listIngredients());
+    return groceryList(
+      this.listMeals(range),
+      this.listRecipes(),
+      this.listIngredients(),
+      this.listCategories(),
+    );
   }
 
   #ingredient(id: string): Ingredient | undefined {
-    return this.#db.select().from(ingredients).where(eq(ingredients.id, id)).get();
+    const row = this.#db.select().from(ingredients).where(eq(ingredients.id, id)).get();
+
+    return row === undefined ? undefined : categorized(row);
   }
 
   /** An ingredient with this name, ignoring case and surrounding spaces, other than the one with id `except`. */
   #ingredientNamed(name: string, except?: string): Ingredient | undefined {
     const named = sameName(ingredients.name, name);
 
-    return this.#db
+    const row = this.#db
       .select()
       .from(ingredients)
       .where(except === undefined ? named : and(named, ne(ingredients.id, except)))
       .get();
+
+    return row === undefined ? undefined : categorized(row);
   }
 
   #category(id: string): IngredientCategory | undefined {

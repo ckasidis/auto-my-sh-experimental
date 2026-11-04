@@ -1,6 +1,11 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, section, type ToolRegistration } from "@earendil-works/pi-durable";
-import { formatGroceryAmount, type GroceryItem } from "utils/groceries";
+import {
+  formatGroceryAmount,
+  type GroceryItem,
+  groupGroceries,
+  OTHER_CATEGORY,
+} from "utils/groceries";
 import {
   type Ingredient,
   type IngredientCategory,
@@ -67,7 +72,7 @@ const textResult = <T>(text: string, details: T | null) => ({
 
 const CategoryId = Type.String({
   minLength: 1,
-  description: "An id from list_categories or add_category",
+  description: `An id from list_categories or add_category; ${OTHER_CATEGORY.id} is ${OTHER_CATEGORY.name}, the default`,
 });
 
 type Categories = ReadonlyMap<string, IngredientCategory>;
@@ -78,12 +83,9 @@ const byId = (categories: readonly IngredientCategory[]): Categories =>
 function formatIngredient(ingredient: Ingredient, categories: Categories): string {
   const unit = ingredient.unit === null ? "no unit" : `unit: ${ingredient.unit}`;
 
-  const category =
-    ingredient.categoryId === null
-      ? ""
-      : `, category: ${categories.get(ingredient.categoryId)?.name ?? ingredient.categoryId}`;
+  const category = categories.get(ingredient.categoryId)?.name ?? OTHER_CATEGORY.name;
 
-  return `- ${ingredient.name} (${unit}${category}, id: ${ingredient.id})`;
+  return `- ${ingredient.name} (${unit}, category: ${category}, id: ${ingredient.id})`;
 }
 
 const formatCategory = (category: IngredientCategory) => `- ${category.name} (id: ${category.id})`;
@@ -140,6 +142,19 @@ function formatMeal(meal: Meal, recipesById: ReadonlyMap<string, Recipe>): strin
 const formatGroceryItem = (item: GroceryItem) =>
   `- ${item.name}: ${formatGroceryAmount(item)} (for ${item.recipes.join(", ")})`;
 
+/** Under a heading per category, "Other" last; a plain list when it is all one category. */
+function formatGroceries(items: readonly GroceryItem[]): string {
+  const groups = groupGroceries(items);
+
+  if (groups.length === 1) return items.map(formatGroceryItem).join("\n");
+
+  return groups
+    .map(({ category, items: group }) =>
+      [`${category}:`, ...group.map(formatGroceryItem)].join("\n"),
+    )
+    .join("\n\n");
+}
+
 type IngredientArguments = {
   readonly name: string;
   readonly unit?: string;
@@ -160,6 +175,10 @@ type NameArguments = {
 type RenameArguments = {
   readonly id: string;
   readonly name: string;
+};
+
+type ReorderArguments = {
+  readonly ids: readonly string[];
 };
 
 type LineArguments = {
@@ -228,7 +247,8 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
   return [
     {
       name: "list_categories",
-      description: "List the owner's ingredient categories (such as Produce or Dairy), with ids.",
+      description:
+        "List the owner's ingredient categories (such as Produce or Dairy) in the order lists show them, with ids.",
       parameters: Type.Object({}),
       replay: "safe",
       execute: async () => {
@@ -256,7 +276,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
     },
     {
       name: "rename_category",
-      description: "Rename an ingredient category by id.",
+      description: `Rename an ingredient category by id. ${OTHER_CATEGORY.name}, the default, cannot be renamed.`,
       parameters: Type.Object({ id: Id, name: Name }),
       replay: "safe",
       execute: async (args: RenameArguments) => {
@@ -268,8 +288,19 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
       },
     },
     {
+      name: "reorder_categories",
+      description: `Set the order lists show ingredient categories in, such as the order of the aisles in the owner's shop. ids lists categories first to last; any left out follow in their current order, and ${OTHER_CATEGORY.name} is always last.`,
+      parameters: Type.Object({ ids: Type.Array(Id, { minItems: 1, maxItems: 100 }) }),
+      replay: "safe",
+      execute: async (args: ReorderArguments) => {
+        const list = await store().reorderCategories([...args.ids]);
+
+        return textResult(`Reordered:\n${list.map(formatCategory).join("\n")}`, list);
+      },
+    },
+    {
       name: "delete_category",
-      description: "Delete an ingredient category by id. Its ingredients are kept, in no category.",
+      description: `Delete an ingredient category by id. Its ingredients are kept, and move to ${OTHER_CATEGORY.name}, the default, which cannot be deleted.`,
       parameters: Type.Object({ id: Id }),
       replay: "safe",
       execute: async (args: IdArguments) => {
@@ -296,8 +327,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
     },
     {
       name: "add_ingredient",
-      description:
-        "Add an ingredient recipes can use. Every recipe measures it in its one unit; omit unit for one counted without a unit (eggs) or never measured (salt). Adding a name that exists returns the existing ingredient.",
+      description: `Add an ingredient recipes can use. Every recipe measures it in its one unit; omit unit for one counted without a unit (eggs) or never measured (salt). Omit categoryId for ${OTHER_CATEGORY.name}, the default. Adding a name that exists returns the existing ingredient.`,
       parameters: Type.Object({
         name: Name,
         unit: Type.Optional(Unit),
@@ -321,8 +351,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
     },
     {
       name: "update_ingredient",
-      description:
-        "Rename an ingredient, or change its unit or category (null clears either). Changing the unit does not convert the quantities recipes already give in the old one.",
+      description: `Rename an ingredient, or change its unit (null clears it) or category (null is ${OTHER_CATEGORY.name}, the default). Changing the unit does not convert the quantities recipes already give in the old one.`,
       parameters: Type.Object({
         id: Id,
         name: Type.Optional(Name),
@@ -551,7 +580,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
     {
       name: "grocery_list",
       description:
-        "The grocery list for the meals planned from one date to another, inclusive: every ingredient they need, with amounts scaled to each meal's servings and summed.",
+        "The grocery list for the meals planned from one date to another, inclusive: every ingredient they need, with amounts scaled to each meal's servings and summed, grouped by category.",
       parameters: Type.Object({ from: CalendarDate, to: CalendarDate }),
       replay: "safe",
       execute: async (args: RangeArguments) => {
@@ -563,7 +592,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
             list,
           );
 
-        return textResult(list.map(formatGroceryItem).join("\n"), list);
+        return textResult(formatGroceries(list), list);
       },
     },
   ];
@@ -571,7 +600,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
 
 const RECIPES = `The owner keeps ingredients, recipes, and a meal prep calendar, which you manage with the recipe tools.
 
-- An ingredient has one unit ("g", "ml", "pcs", or none), and every recipe measures it in that unit. It may be in one category (list_categories); give a new ingredient the category that fits when one exists, and add a category only when the owner asks. Before add_recipe or update_recipe, call list_ingredients and add_ingredient for any that are missing, choosing a unit the recipe's amounts can be given in; convert amounts to it ("1 cup flour" is about 120 g).
+- An ingredient has one unit ("g", "ml", "pcs", or none), and every recipe measures it in that unit. It is in one category (list_categories): "Other", the default, unless it is given another. Give a new ingredient the category that fits when one exists, and add a category only when the owner asks. Before add_recipe or update_recipe, call list_ingredients and add_ingredient for any that are missing, choosing a unit the recipe's amounts can be given in; convert amounts to it ("1 cup flour" is about 120 g).
 - A recipe's amounts are for its servings. A planned meal is a recipe on a date (YYYY-MM-DD, in the owner's timezone) and slot (breakfast, lunch, dinner, or snack), with its own servings.
 - grocery_list totals what the meals planned in a date range need. It is computed from the calendar each time: it is not a todo, and nothing is added to the todos unless the owner asks.
 - For "this week" and similar ranges, work the dates out from the current time.`;

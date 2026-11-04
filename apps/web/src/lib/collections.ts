@@ -33,6 +33,7 @@ import {
   listSchedules,
   listTodos,
   renameCategory,
+  reorderCategories,
   updateIngredient,
   updateMeal,
   updateRecipe,
@@ -193,7 +194,7 @@ function mealChanges(changes: Partial<Meal>): MealChanges {
   return result;
 }
 
-/** The ingredient categories; the only change to one is its name. */
+/** The ingredient categories: a change to one is a rename, or a move that sets every one's position. */
 export const categoryCollection = createCollection(
   queryCollectionOptions({
     id: "categories",
@@ -210,11 +211,25 @@ export const categoryCollection = createCollection(
       await collection.utils.refetch();
     },
     onUpdate: async ({ transaction, collection }) => {
+      const renamed = transaction.mutations.filter(({ changes }) => changes.name !== undefined);
+      const moved = transaction.mutations.filter(({ changes }) => changes.position !== undefined);
+
       await Promise.all(
-        transaction.mutations.map(({ original, modified }) =>
+        renamed.map(({ original, modified }) =>
           renameCategory({ data: { id: original.id, name: modified.name } }),
         ),
       );
+
+      // A move sets every category's position; the server takes them as one order, first to last.
+      if (moved.length > 0) {
+        const ids = moved
+          .map(({ modified }) => modified)
+          .sort((a, b) => a.position - b.position)
+          .map(({ id }) => id);
+
+        await reorderCategories({ data: { ids } });
+      }
+
       await collection.utils.refetch();
     },
     onDelete: async ({ transaction, collection }) => {

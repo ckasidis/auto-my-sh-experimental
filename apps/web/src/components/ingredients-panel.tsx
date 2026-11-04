@@ -1,7 +1,7 @@
 import { useLiveQuery } from "@tanstack/react-db";
 import type { Ingredient, IngredientCategory } from "assistant/recipe-book";
-import { CheckIcon, PlusIcon, TagsIcon, Trash2Icon } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { CheckIcon, PlusIcon, XIcon } from "lucide-react";
+import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { Choice } from "@/components/choice";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,40 +16,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { categoryCollection, ingredientCollection, recipeCollection } from "@/lib/collections";
 import { follow } from "@/lib/feedback";
+import { nameTaken } from "@/lib/names";
+import { compareCategories, OTHER_CATEGORY } from "utils/groceries";
 
 const UNIT_HINT =
   "The one unit every recipe measures it in, like g, ml or pcs. Leave empty for none.";
 
-/** The category picker's choice for an ingredient in no category; real ids are `category:…`. */
-const NONE = "none";
-
 /** Empty input is no unit. */
 const unitOf = (text: string) => (text.trim() === "" ? null : text.trim());
 
-const categoryOf = (choice: string) => (choice === NONE ? null : choice);
-
-/** The category picker's options: none, then each category by name. */
-const categoryItems = (categories: readonly IngredientCategory[]) => ({
-  [NONE]: "No category",
-  ...Object.fromEntries(categories.map((category) => [category.id, category.name])),
-});
+/** The category picker's options, in the order the list shows them. */
+const categoryItems = (categories: readonly IngredientCategory[]) =>
+  Object.fromEntries(categories.map((category) => [category.id, category.name]));
 
 /**
- * The server keeps one ingredient, and one category, per name, ignoring case, so the forms refuse a name already on
- * the list.
- */
-const nameTaken = (
-  name: string,
-  existing: readonly { readonly id: string; readonly name: string }[],
-  except?: string,
-) =>
-  existing.some(
-    (item) => item.id !== except && item.name.trim().toLowerCase() === name.trim().toLowerCase(),
-  );
-
-/**
- * The ingredients recipes are made from, grouped by category and then by name, each with the recipes that use it; the
- * categories are managed here too.
+ * The ingredients recipes are made from, under a heading per category in name order and then "Other", the default, as
+ * grocery apps list them; each heading adds an ingredient to its category. While Other is the only category it is not
+ * shown: the list is just the ingredients. Categories are managed in settings.
  */
 export function IngredientsPanel() {
   const ingredients = useLiveQuery((q) =>
@@ -58,13 +41,11 @@ export function IngredientsPanel() {
       .orderBy(({ ingredient }) => ingredient.name, "asc"),
   );
 
-  const categories = useLiveQuery((q) =>
-    q.from({ category: categoryCollection }).orderBy(({ category }) => category.name, "asc"),
-  );
+  const categories = useLiveQuery((q) => q.from({ category: categoryCollection }));
 
   const recipes = useLiveQuery((q) => q.from({ recipe: recipeCollection }));
   const [editing, setEditing] = useState<Ingredient | null>(null);
-  const [managing, setManaging] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
 
   if (ingredients.isLoadingError || categories.isLoadingError) {
     return (
@@ -78,124 +59,123 @@ export function IngredientsPanel() {
       recipe.ingredients.some(({ ingredientId }) => ingredientId === id) ? [recipe.name] : [],
     );
 
-  const known = new Set(categories.data.map(({ id }) => id));
+  const ordered = [...categories.data].sort(compareCategories);
+  const known = new Set(ordered.map(({ id }) => id));
+  const only = ordered.every(({ id }) => id === OTHER_CATEGORY.id);
 
-  // Each category in name order, empty ones included so they can be seen; then the ingredients in none, or in one
-  // that is gone.
-  const groups = [
-    ...categories.data.map((category) => ({
+  /** Its category, or Other for one whose category is gone. */
+  const shownIn = (ingredient: Ingredient) =>
+    known.has(ingredient.categoryId) ? ingredient.categoryId : OTHER_CATEGORY.id;
+
+  // Every category, empty ones included so each can be added to; Other is always there, even before the store's
+  // migration is seen.
+  const groups = (known.has(OTHER_CATEGORY.id) ? ordered : [...ordered, OTHER_CATEGORY]).map(
+    (category) => ({
       key: category.id,
-      title: category.name,
-      items: ingredients.data.filter(({ categoryId }) => categoryId === category.id),
-    })),
-    {
-      key: NONE,
-      title: "No category",
-      items: ingredients.data.filter(
-        ({ categoryId }) => categoryId === null || !known.has(categoryId),
-      ),
-    },
-  ];
+      title: only ? "Ingredients" : category.name,
+      items: ingredients.data.filter((ingredient) => shownIn(ingredient) === category.id),
+    }),
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <AddIngredient existing={ingredients.data} categories={categories.data} />
-      <Button variant="outline" className="self-start" onClick={() => setManaging(true)}>
-        <TagsIcon />
-        Categories{categories.data.length > 0 && ` · ${categories.data.length}`}
-      </Button>
-      {ingredients.data.length === 0 && categories.data.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">No ingredients yet.</p>
-      ) : (
-        groups.map((group) =>
-          // Without categories there is one group, shown without a heading; an empty "No category" is left out.
-          group.key === NONE && group.items.length === 0 ? null : (
-            <section key={group.key} className="flex flex-col gap-2">
-              {categories.data.length > 0 && (
-                <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  {group.title} · {group.items.length}
-                </h3>
+      {groups.map((group) => (
+        <section key={group.key} className="flex flex-col gap-2">
+          <header className="flex items-center gap-2 px-1">
+            <h3 className="flex-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              {group.title} · {group.items.length}
+            </h3>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setAdding(adding === group.key ? null : group.key)}
+              aria-label={`Add an ingredient to ${group.title}`}
+              aria-expanded={adding === group.key}
+            >
+              <PlusIcon />
+            </Button>
+          </header>
+          {(group.items.length > 0 || adding === group.key) && (
+            <ul className="divide-y overflow-hidden rounded-xl bg-card">
+              {group.items.map((ingredient) => (
+                <IngredientRow
+                  key={ingredient.id}
+                  ingredient={ingredient}
+                  users={usedBy(ingredient.id)}
+                  onEdit={setEditing}
+                />
+              ))}
+              {adding === group.key && (
+                <AddIngredient
+                  categoryId={group.key}
+                  existing={ingredients.data}
+                  onClose={() => setAdding(null)}
+                />
               )}
-              {group.items.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No ingredients in it.</p>
-              ) : (
-                <IngredientList ingredients={group.items} usedBy={usedBy} onEdit={setEditing} />
-              )}
-            </section>
-          ),
-        )
-      )}
+            </ul>
+          )}
+          {group.items.length === 0 && adding !== group.key && (
+            <p className="px-1 text-xs text-muted-foreground">
+              {only ? "No ingredients yet." : "Nothing in it."}
+            </p>
+          )}
+        </section>
+      ))}
       <EditIngredient
         ingredient={editing}
         existing={ingredients.data}
-        categories={categories.data}
+        categories={ordered}
         usedBy={editing === null ? [] : usedBy(editing.id)}
         onClose={() => setEditing(null)}
-      />
-      <ManageCategories
-        open={managing}
-        categories={categories.data}
-        ingredients={ingredients.data}
-        onClose={() => setManaging(false)}
       />
     </div>
   );
 }
 
-function IngredientList({
-  ingredients,
-  usedBy,
+function IngredientRow({
+  ingredient,
+  users,
   onEdit,
 }: {
-  readonly ingredients: readonly Ingredient[];
-  readonly usedBy: (id: string) => readonly string[];
+  readonly ingredient: Ingredient;
+  readonly users: readonly string[];
   readonly onEdit: (ingredient: Ingredient) => void;
 }) {
   return (
-    <ul className="divide-y overflow-hidden rounded-xl bg-card">
-      {ingredients.map((ingredient) => {
-        const users = usedBy(ingredient.id);
-
-        return (
-          <li key={ingredient.id}>
-            <button
-              type="button"
-              className="flex w-full items-baseline gap-2 px-3 py-2.5 text-left"
-              onClick={() => onEdit(ingredient)}
-            >
-              <span className="min-w-0 flex-1 truncate text-[0.95rem]">{ingredient.name}</span>
-              {ingredient.unit !== null && (
-                <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
-              )}
-              <span className="text-xs text-muted-foreground">
-                {users.length === 0
-                  ? "unused"
-                  : `${users.length} recipe${users.length === 1 ? "" : "s"}`}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <li>
+      <button
+        type="button"
+        className="flex w-full items-baseline gap-2 px-3 py-2.5 text-left"
+        onClick={() => onEdit(ingredient)}
+      >
+        <span className="min-w-0 flex-1 truncate text-[0.95rem]">{ingredient.name}</span>
+        {ingredient.unit !== null && (
+          <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {users.length === 0 ? "unused" : `${users.length} recipe${users.length === 1 ? "" : "s"}`}
+        </span>
+      </button>
+    </li>
   );
 }
 
-/** Adds an ingredient. The category stays chosen between adds, for entering several of one kind. */
+/**
+ * A row at the end of a category's list that adds an ingredient to it. It stays open after each add, for entering
+ * several in a row; Escape or the close button ends it.
+ */
 function AddIngredient({
+  categoryId,
   existing,
-  categories,
+  onClose,
 }: {
+  readonly categoryId: string;
   readonly existing: readonly Ingredient[];
-  readonly categories: readonly IngredientCategory[];
+  readonly onClose: () => void;
 }) {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("");
-  const [category, setCategory] = useState(NONE);
   const taken = nameTaken(name, existing);
-
-  // A category deleted while chosen falls back to none.
-  const chosen =
-    category === NONE || categories.some(({ id }) => id === category) ? category : NONE;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -207,7 +187,7 @@ function AddIngredient({
         id: `ingredient:app:${crypto.randomUUID()}`,
         name: name.trim(),
         unit: unitOf(unit),
-        categoryId: categoryOf(chosen),
+        categoryId,
         createdAt: Date.now(),
       }),
     );
@@ -215,47 +195,42 @@ function AddIngredient({
     setUnit("");
   };
 
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") onClose();
+  };
+
   return (
-    <form onSubmit={submit} className="grid gap-2">
-      <div className="flex gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Add an ingredient"
-          maxLength={200}
-          className="h-10 bg-card"
-          aria-invalid={taken}
-        />
-        <Input
-          value={unit}
-          onChange={(event) => setUnit(event.target.value)}
-          placeholder="Unit"
-          maxLength={20}
-          className="h-10 w-20 bg-card"
-          aria-label="Unit"
-          enterKeyHint="done"
-        />
-        <Button
-          type="submit"
-          size="icon-lg"
-          className="size-10"
-          disabled={name.trim() === "" || taken}
-          aria-label="Add"
-        >
-          <PlusIcon />
-        </Button>
-      </div>
-      {categories.length > 0 && (
-        <Choice
-          items={categoryItems(categories)}
-          value={chosen}
-          onChange={setCategory}
-          label="Category"
-          className="bg-card"
-        />
-      )}
-      {taken && <p className="px-1 text-xs text-destructive">Already on the list.</p>}
-    </form>
+    <li className="px-2 py-2">
+      <form onSubmit={submit} onKeyDown={closeOnEscape} className="grid gap-1">
+        <div className="flex gap-2">
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Name"
+            maxLength={200}
+            aria-label="Name"
+            aria-invalid={taken}
+            autoFocus
+          />
+          <Input
+            value={unit}
+            onChange={(event) => setUnit(event.target.value)}
+            placeholder="Unit"
+            maxLength={20}
+            className="w-20"
+            aria-label="Unit"
+            enterKeyHint="done"
+          />
+          <Button type="submit" size="icon" disabled={name.trim() === "" || taken} aria-label="Add">
+            <CheckIcon />
+          </Button>
+          <Button type="button" size="icon" variant="ghost" onClick={onClose} aria-label="Done">
+            <XIcon />
+          </Button>
+        </div>
+        {taken && <p className="px-1 text-xs text-destructive">Already on the list.</p>}
+      </form>
+    </li>
   );
 }
 
@@ -291,6 +266,7 @@ function EditIngredient({
   );
 }
 
+/** Edits an ingredient's name, unit and category, or deletes it while no recipe uses it. */
 function EditIngredientForm({
   ingredient,
   existing,
@@ -307,10 +283,11 @@ function EditIngredientForm({
   const [name, setName] = useState(ingredient.name);
   const [unit, setUnit] = useState(ingredient.unit ?? "");
 
-  const [category, setCategory] = useState(
+  // An ingredient whose category is gone is listed under Other, so its picker starts there.
+  const [category, setCategory] = useState<string>(
     categories.some(({ id }) => id === ingredient.categoryId)
-      ? (ingredient.categoryId ?? NONE)
-      : NONE,
+      ? ingredient.categoryId
+      : OTHER_CATEGORY.id,
   );
 
   const taken = nameTaken(name, existing, ingredient.id);
@@ -323,7 +300,7 @@ function EditIngredientForm({
       ingredientCollection.update(ingredient.id, (draft) => {
         draft.name = name.trim();
         draft.unit = unitOf(unit);
-        draft.categoryId = categoryOf(category);
+        draft.categoryId = category;
       }),
     );
     onClose();
@@ -368,15 +345,17 @@ function EditIngredientForm({
             : UNIT_HINT}
         </p>
       </div>
-      <div className="grid gap-1.5">
-        <Label>Category</Label>
-        <Choice
-          items={categoryItems(categories)}
-          value={category}
-          onChange={setCategory}
-          label="Category"
-        />
-      </div>
+      {categories.some(({ id }) => id !== OTHER_CATEGORY.id) && (
+        <div className="grid gap-1.5">
+          <Label>Category</Label>
+          <Choice
+            items={categoryItems(categories)}
+            value={category}
+            onChange={setCategory}
+            label="Category"
+          />
+        </div>
+      )}
       <DialogFooter className="flex-row justify-between sm:justify-between">
         <Button
           type="button"
@@ -392,150 +371,5 @@ function EditIngredientForm({
         </Button>
       </DialogFooter>
     </form>
-  );
-}
-
-/** Adds, renames and deletes categories. Deleting one keeps its ingredients, in no category. */
-function ManageCategories({
-  open,
-  categories,
-  ingredients,
-  onClose,
-}: {
-  readonly open: boolean;
-  readonly categories: readonly IngredientCategory[];
-  readonly ingredients: readonly Ingredient[];
-  readonly onClose: () => void;
-}) {
-  const [name, setName] = useState("");
-  const taken = nameTaken(name, categories);
-
-  const add = (event: FormEvent) => {
-    event.preventDefault();
-
-    if (name.trim() === "" || taken) return;
-
-    follow(
-      categoryCollection.insert({
-        id: `category:app:${crypto.randomUUID()}`,
-        name: name.trim(),
-        createdAt: Date.now(),
-      }),
-    );
-    setName("");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Categories</DialogTitle>
-          <DialogDescription>
-            Groups for ingredients, like Produce or Dairy. Deleting one keeps its ingredients.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={add} className="grid gap-1">
-          <div className="flex gap-2">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Add a category"
-              maxLength={200}
-              aria-invalid={taken}
-              enterKeyHint="done"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={name.trim() === "" || taken}
-              aria-label="Add category"
-            >
-              <PlusIcon />
-            </Button>
-          </div>
-          {taken && <p className="px-1 text-xs text-destructive">Already on the list.</p>}
-        </form>
-        {categories.length === 0 ? (
-          <p className="text-muted-foreground">No categories yet.</p>
-        ) : (
-          <ul className="grid gap-2">
-            {categories.map((category) => (
-              <CategoryRow
-                key={category.id}
-                category={category}
-                categories={categories}
-                count={ingredients.filter(({ categoryId }) => categoryId === category.id).length}
-              />
-            ))}
-          </ul>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** One category: its name, saved when changed, and a delete button. */
-function CategoryRow({
-  category,
-  categories,
-  count,
-}: {
-  readonly category: IngredientCategory;
-  readonly categories: readonly IngredientCategory[];
-  readonly count: number;
-}) {
-  const [name, setName] = useState(category.name);
-  const taken = nameTaken(name, categories, category.id);
-  const changed = name.trim() !== category.name;
-
-  const rename = (event: FormEvent) => {
-    event.preventDefault();
-
-    if (name.trim() === "" || taken || !changed) return;
-
-    follow(
-      categoryCollection.update(category.id, (draft) => {
-        draft.name = name.trim();
-      }),
-    );
-  };
-
-  return (
-    <li>
-      <form onSubmit={rename} className="flex items-center gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={200}
-          aria-label={`Rename ${category.name}`}
-          aria-invalid={taken || name.trim() === ""}
-          enterKeyHint="done"
-        />
-        <span className="w-6 text-right text-xs text-muted-foreground" title="Ingredients in it">
-          {count}
-        </span>
-        {changed ? (
-          <Button
-            type="submit"
-            size="icon"
-            variant="outline"
-            disabled={name.trim() === "" || taken}
-            aria-label={`Save ${name.trim()}`}
-          >
-            <CheckIcon />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => follow(categoryCollection.delete(category.id))}
-            aria-label={`Delete ${category.name}`}
-          >
-            <Trash2Icon />
-          </Button>
-        )}
-      </form>
-    </li>
   );
 }
