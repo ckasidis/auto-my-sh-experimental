@@ -12,6 +12,7 @@ import type {
 } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo, TodoChanges } from "assistant/user-store";
+import { compareCategories, OTHER_CATEGORY } from "utils/groceries";
 import { isCron } from "utils/recurrence";
 import {
   addCategory,
@@ -220,12 +221,12 @@ export const categoryCollection = createCollection(
         ),
       );
 
-      // A move sets every category's position; the server takes them as one order, first to last.
+      // A move renumbers every category, but a category whose number stayed the same is not among the mutations, and
+      // the server puts the ones it is given first. So send the whole order, as the collection shows it with the move.
       if (moved.length > 0) {
-        const ids = moved
-          .map(({ modified }) => modified)
-          .sort((a, b) => a.position - b.position)
-          .map(({ id }) => id);
+        const ids = [...collection.toArray]
+          .sort(compareCategories)
+          .flatMap(({ id }) => (id === OTHER_CATEGORY.id ? [] : [id]));
 
         await reorderCategories({ data: { ids } });
       }
