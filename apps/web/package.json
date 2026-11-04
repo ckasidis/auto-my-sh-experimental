@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@base-ui/react": "catalog:",
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "@tanstack/query-db-collection": "catalog:",
     "@tanstack/react-db": "catalog:",
     "@tanstack/react-query": "catalog:",

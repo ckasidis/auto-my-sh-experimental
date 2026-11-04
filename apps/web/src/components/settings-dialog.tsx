@@ -1,7 +1,15 @@
 import { useLiveQuery } from "@tanstack/react-db";
 import type { IngredientCategory } from "assistant/recipe-book";
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  GripVerticalIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { Sortable, SortableItem, SortableItemHandle } from "@/components/reui/sortable";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -70,17 +78,25 @@ function IngredientCategories() {
   };
 
   /** Moves the category at `index` one place up or down, renumbering every one so the order is the whole list. */
+  /** Puts the categories in this order, renumbering every one so the order is the whole list. */
+  const reorder = (order: readonly string[]) =>
+    follow(
+      categoryCollection.update([...order], (drafts) => {
+        for (const draft of drafts) draft.position = order.indexOf(draft.id) + 1;
+      }),
+    );
+
+  /** Moves the category at `index` one place up or down. */
   const move = (index: number, by: -1 | 1) => {
     const order = movable.map(({ id }) => id);
     const [id] = order.splice(index, 1);
 
     order.splice(index + by, 0, id!);
-    follow(
-      categoryCollection.update(order, (drafts) => {
-        for (const draft of drafts) draft.position = order.indexOf(draft.id) + 1;
-      }),
-    );
+    reorder(order);
   };
+
+  const countIn = (id: string) =>
+    ingredients.data.filter(({ categoryId }) => categoryId === id).length;
 
   return (
     <section className="grid gap-3">
@@ -114,41 +130,45 @@ function IngredientCategories() {
         </div>
         {taken && <p className="px-1 text-xs text-destructive">Already on the list.</p>}
       </form>
-      <ul className="grid gap-2">
-        {ordered.map((category) => {
-          const count = ingredients.data.filter(
-            ({ categoryId }) => categoryId === category.id,
-          ).length;
-
-          const index = movable.indexOf(category);
-
-          return category.id === OTHER_CATEGORY.id ? (
-            <li key={category.id} className="flex h-8 items-center gap-2">
-              {/* Lines up with the other rows' move buttons. */}
-              <span className="w-6" />
-              <span className="flex-1 px-2.5">{category.name}</span>
-              <span className="text-xs text-muted-foreground">Default</span>
-              <span className="w-6 text-right text-xs text-muted-foreground">{count}</span>
-              {/* Lines up with the other rows' buttons. */}
-              <span className="size-8" />
-            </li>
-          ) : (
-            <CategoryRow
-              key={category.id}
-              category={category}
-              categories={names}
-              count={count}
-              onMoveUp={index === 0 ? undefined : () => move(index, -1)}
-              onMoveDown={index === movable.length - 1 ? undefined : () => move(index, 1)}
-            />
-          );
-        })}
-      </ul>
+      <div className="grid gap-2">
+        {/* Dragged by the grip only, so the list still scrolls and the names can be edited. */}
+        <Sortable
+          value={movable}
+          onValueChange={(next) => reorder(next.map(({ id }) => id))}
+          getItemValue={(category) => category.id}
+          className="grid gap-2"
+        >
+          {movable.map((category, index) => (
+            // The dragged copy is drawn over the dialog, so it has the dialog's background.
+            <SortableItem key={category.id} value={category.id} className="rounded-lg bg-popover">
+              <CategoryRow
+                category={category}
+                categories={names}
+                count={countIn(category.id)}
+                onMoveUp={index === 0 ? undefined : () => move(index, -1)}
+                onMoveDown={index === movable.length - 1 ? undefined : () => move(index, 1)}
+              />
+            </SortableItem>
+          ))}
+        </Sortable>
+        {/* Other stays last: it is not in the sortable list. */}
+        <div className="flex h-8 items-center gap-2">
+          {/* Lines up with the other rows' grip and move buttons. */}
+          <span className="w-14" />
+          <span className="flex-1 px-2.5">{OTHER_CATEGORY.name}</span>
+          <span className="text-xs text-muted-foreground">Default</span>
+          <span className="w-6 text-right text-xs text-muted-foreground">
+            {countIn(OTHER_CATEGORY.id)}
+          </span>
+          {/* Lines up with the other rows' buttons. */}
+          <span className="size-8" />
+        </div>
+      </div>
     </section>
   );
 }
 
-/** One category: buttons to move it, its name, saved when changed, and a delete button. */
+/** One category: a grip to drag it and buttons to move it, its name, saved when changed, and a delete button. */
 function CategoryRow({
   category,
   categories,
@@ -181,63 +201,68 @@ function CategoryRow({
   };
 
   return (
-    <li>
-      <form onSubmit={rename} className="flex items-center gap-2">
-        <div className="flex flex-col">
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={onMoveUp}
-            disabled={onMoveUp === undefined}
-            aria-label={`Move ${category.name} up`}
-          >
-            <ChevronUpIcon />
-          </Button>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={onMoveDown}
-            disabled={onMoveDown === undefined}
-            aria-label={`Move ${category.name} down`}
-          >
-            <ChevronDownIcon />
-          </Button>
-        </div>
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={200}
-          aria-label={`Rename ${category.name}`}
-          aria-invalid={taken || name.trim() === ""}
-          enterKeyHint="done"
-        />
-        <span className="w-6 text-right text-xs text-muted-foreground" title="Ingredients in it">
-          {count}
-        </span>
-        {changed ? (
-          <Button
-            type="submit"
-            size="icon"
-            variant="outline"
-            disabled={name.trim() === "" || taken}
-            aria-label={`Save ${name.trim()}`}
-          >
-            <CheckIcon />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => follow(categoryCollection.delete(category.id))}
-            aria-label={`Delete ${category.name}`}
-          >
-            <Trash2Icon />
-          </Button>
-        )}
-      </form>
-    </li>
+    <form onSubmit={rename} className="flex items-center gap-2">
+      {/* `touch-none` leaves the touch to the drag instead of scrolling the dialog. */}
+      <SortableItemHandle
+        className="flex h-8 w-6 touch-none items-center justify-center text-muted-foreground"
+        aria-label={`Drag ${category.name} to reorder`}
+      >
+        <GripVerticalIcon className="size-4" />
+      </SortableItemHandle>
+      <div className="flex flex-col">
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={onMoveUp}
+          disabled={onMoveUp === undefined}
+          aria-label={`Move ${category.name} up`}
+        >
+          <ChevronUpIcon />
+        </Button>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={onMoveDown}
+          disabled={onMoveDown === undefined}
+          aria-label={`Move ${category.name} down`}
+        >
+          <ChevronDownIcon />
+        </Button>
+      </div>
+      <Input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={200}
+        aria-label={`Rename ${category.name}`}
+        aria-invalid={taken || name.trim() === ""}
+        enterKeyHint="done"
+      />
+      <span className="w-6 text-right text-xs text-muted-foreground" title="Ingredients in it">
+        {count}
+      </span>
+      {changed ? (
+        <Button
+          type="submit"
+          size="icon"
+          variant="outline"
+          disabled={name.trim() === "" || taken}
+          aria-label={`Save ${name.trim()}`}
+        >
+          <CheckIcon />
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => follow(categoryCollection.delete(category.id))}
+          aria-label={`Delete ${category.name}`}
+        >
+          <Trash2Icon />
+        </Button>
+      )}
+    </form>
   );
 }

@@ -20,6 +20,8 @@ const ignorePatterns = [
   "apps/web/src/routeTree.gen.ts",
   // Copied from the shadcn/ui registry (`shadcn add`).
   "apps/web/src/components/ui/**",
+  // Copied from the ReUI registry (`shadcn view @reui/sortable`), with its `cn` import pointed at `@/lib/utils`.
+  "apps/web/src/components/reui/**",
 ];
 
 export default defineConfig({
