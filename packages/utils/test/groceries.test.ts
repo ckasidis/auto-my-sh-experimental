@@ -8,10 +8,10 @@ const ingredients = [
   { id: "butter", name: "Butter", unit: "g", categoryId: "dairy" },
 ];
 
-// In the owner's order, not by name: Dairy, Baking, Vegetables. Other is last whatever its position.
+// In the owner's order, not by name: Dairy, Baking, Vegetables, Other.
 const categories = [
   { id: "dairy", name: "Dairy", position: 1 },
-  { id: "category:other", name: "Other", position: 0 },
+  { id: "category:other", name: "Other", position: 4 },
   { id: "baking", name: "Baking", position: 2 },
   { id: "veg", name: "Vegetables", position: 3 },
 ];
@@ -82,7 +82,7 @@ describe("grocery list", () => {
     ]);
   });
 
-  it("sorts by the owner's category order, then by name, with the default category last", () => {
+  it("sorts by the owner's category order, then by name, with unknown categories in the default one", () => {
     const pantry = [
       ...ingredients,
       { id: "yeast", name: "Yeast", unit: "g", categoryId: "gone" },
@@ -121,6 +121,16 @@ describe("grocery list", () => {
       ["Vegetables", ["Zucchini"]],
       ["Other", ["Apple", "Salt", "Yeast"]],
     ]);
+
+    const otherFirst = categories.map((category) =>
+      category.id === "category:other" ? { ...category, position: 0 } : category,
+    );
+
+    expect(
+      groupGroceries(
+        groceryList([{ recipeId: "everything", servings: 1 }], [everything], pantry, otherFirst),
+      ).map(({ category }) => category),
+    ).toEqual(["Other", "Dairy", "Baking", "Vegetables"]);
   });
 
   it("formats an amount with its unit, and says when some is unmeasured", () => {

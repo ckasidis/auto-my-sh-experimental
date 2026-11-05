@@ -70,3 +70,33 @@ describe("the category order's migration", () => {
     ]);
   });
 });
+
+describe("the migration that orders Other like the others", () => {
+  it("puts Other after every other category", () => {
+    const db = new DatabaseSync(":memory:");
+
+    for (const name of [
+      "0000_todos",
+      "0001_recipes",
+      "0002_ingredient_categories",
+      "0003_other_category",
+    ]) {
+      migrate(db, name);
+    }
+
+    db.exec(`
+      INSERT INTO ingredient_categories (id, name, created_at) VALUES ('produce', 'Produce', 1), ('bakery', 'Bakery', 2);
+    `);
+
+    migrate(db, "0004_category_order");
+    migrate(db, "0005_other_sortable");
+
+    expect(
+      db.prepare("SELECT id, position FROM ingredient_categories ORDER BY position").all(),
+    ).toEqual([
+      { id: "bakery", position: 1 },
+      { id: "produce", position: 3 },
+      { id: "category:other", position: 4 },
+    ]);
+  });
+});

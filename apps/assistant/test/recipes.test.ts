@@ -98,7 +98,7 @@ const meal = (id: string, date: string, servings: number) =>
   ({ id, date, slot: "dinner", recipeId: "carbonara", servings }) as const;
 
 describe("recipe book", () => {
-  it("keeps one category per name, with Other the default and last", () => {
+  it("keeps one category per name, with Other the default", () => {
     const store = stocked();
 
     expect(store.addCategory({ id: "dup", name: " dairy " }).id).toBe("dairy");
@@ -155,7 +155,7 @@ describe("recipe book", () => {
     });
   });
 
-  it("lists categories in the owner's order, new ones last and Other after every one", () => {
+  it("lists categories in the owner's order, Other among them, with new ones before Other while it is last", () => {
     const store = stocked();
 
     store.addCategory({ id: "produce", name: "Produce" });
@@ -164,12 +164,14 @@ describe("recipe book", () => {
     const names = () => store.listCategories().map(({ name }) => name);
 
     expect(names()).toEqual(["Dairy", "Produce", "Bakery", "Other"]);
+    store.addCategory({ id: "frozen", name: "Frozen" });
+    expect(names()).toEqual(["Dairy", "Produce", "Bakery", "Frozen", "Other"]);
     expect(
       store.reorderCategories(["bakery", "category:other", "nope", "dairy"]).map(({ id }) => id),
-    ).toEqual(["bakery", "dairy", "produce", "category:other"]);
+    ).toEqual(["bakery", "category:other", "dairy", "produce", "frozen"]);
 
-    store.addCategory({ id: "frozen", name: "Frozen" });
-    expect(names()).toEqual(["Bakery", "Dairy", "Produce", "Frozen", "Other"]);
+    store.addCategory({ id: "drinks", name: "Drinks" });
+    expect(names()).toEqual(["Bakery", "Other", "Dairy", "Produce", "Frozen", "Drinks"]);
   });
 
   it("stores a recipe's lines and steps in order, and replaces them on update", () => {

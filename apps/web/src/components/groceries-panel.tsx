@@ -15,8 +15,8 @@ import { formatGroceryAmount, groceryList, groupGroceries } from "utils/grocerie
 
 /**
  * What to buy for the week's planned meals: each recipe scaled to its meal's servings, summed per ingredient, under a
- * heading per category with Other, the default, last. It is worked out from the calendar as it changes, as the chat's grocery_list
- * tool does.
+ * heading per category in the owner's order. It is worked out from the calendar as it changes, as the chat's
+ * grocery_list tool does.
  */
 export function GroceriesPanel({
   monday,

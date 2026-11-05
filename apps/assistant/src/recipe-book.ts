@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { type GroceryItem, groceryList, OTHER_CATEGORY } from "utils/groceries";
 import { ingredientCategories, ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
@@ -156,7 +156,7 @@ function sameName(
  * The owner's ingredients and their categories, recipes, and meal prep calendar, in the `UserStore` object's SQLite. A
  * recipe line names an ingredient, so an ingredient a recipe uses is not deleted; deleting a recipe deletes the meals
  * planned with it. Every ingredient is in a category, `OTHER_CATEGORY` unless given another; that one is always there,
- * and deleting another moves its ingredients to it.
+ * and deleting another moves its ingredients to it. It is ordered like any other.
  */
 export class RecipeBook implements OwnerRecipes {
   readonly #db: Database;
@@ -165,13 +165,12 @@ export class RecipeBook implements OwnerRecipes {
     this.#db = db;
   }
 
-  /** In the owner's order, with the default category last. */
+  /** In the owner's order. */
   listCategories(): IngredientCategory[] {
     return this.#db
       .select()
       .from(ingredientCategories)
       .orderBy(
-        sql`${ingredientCategories.id} = ${OTHER_CATEGORY.id}`,
         asc(ingredientCategories.position),
         sql`${ingredientCategories.name} collate nocase`,
         asc(ingredientCategories.id),
@@ -180,35 +179,47 @@ export class RecipeBook implements OwnerRecipes {
   }
 
   /**
-   * Adds the category after the others, or returns the one already stored under its id or, ignoring case, its name:
-   * there is one category per name.
+   * Adds the category at the end of the order, but before the default category while that is last, so the catch-all
+   * stays at the bottom; or returns the one already stored under its id or, ignoring case, its name: there is one
+   * category per name.
    */
   addCategory(category: NewIngredientCategory): IngredientCategory {
     const existing = this.#category(category.id) ?? this.#categoryNamed(category.name);
 
     if (existing !== undefined) return existing;
 
-    const last = this.#db
-      .select({ position: sql<number>`coalesce(max(${ingredientCategories.position}), 0)` })
-      .from(ingredientCategories)
-      .get();
+    return this.#db.transaction((tx) => {
+      const last = tx
+        .select({ id: ingredientCategories.id, position: ingredientCategories.position })
+        .from(ingredientCategories)
+        .orderBy(desc(ingredientCategories.position))
+        .limit(1)
+        .get();
 
-    return this.#db
-      .insert(ingredientCategories)
-      .values({ ...category, position: (last?.position ?? 0) + 1, createdAt: Date.now() })
-      .returning()
-      .get();
+      if (last?.id === OTHER_CATEGORY.id) {
+        tx.update(ingredientCategories)
+          .set({ position: last.position + 1 })
+          .where(eq(ingredientCategories.id, OTHER_CATEGORY.id))
+          .run();
+      }
+
+      const position =
+        last === undefined ? 1 : last.id === OTHER_CATEGORY.id ? last.position : last.position + 1;
+
+      return tx
+        .insert(ingredientCategories)
+        .values({ ...category, position, createdAt: Date.now() })
+        .returning()
+        .get();
+    });
   }
 
   /**
    * Puts the categories in this order, and returns them in it. Categories the order leaves out (one added meanwhile)
-   * follow the named ones in the order they had, and unknown ids are skipped; the default category stays last.
+   * follow the named ones in the order they had, and unknown ids are skipped.
    */
   reorderCategories(ids: readonly string[]): IngredientCategory[] {
-    const current = this.listCategories().flatMap(({ id }) =>
-      id === OTHER_CATEGORY.id ? [] : [id],
-    );
-
+    const current = this.listCategories().map(({ id }) => id);
     const named = [...new Set(ids)].filter((id) => current.includes(id));
     const order = [...named, ...current.filter((id) => !named.includes(id))];
 

@@ -142,7 +142,7 @@ function formatMeal(meal: Meal, recipesById: ReadonlyMap<string, Recipe>): strin
 const formatGroceryItem = (item: GroceryItem) =>
   `- ${item.name}: ${formatGroceryAmount(item)} (for ${item.recipes.join(", ")})`;
 
-/** Under a heading per category, "Other" last; a plain list when it is all one category. */
+/** Under a heading per category, in the owner's order; a plain list when it is all one category. */
 function formatGroceries(items: readonly GroceryItem[]): string {
   const groups = groupGroceries(items);
 
@@ -289,7 +289,7 @@ export function createRecipeTools(store: () => OwnerRecipes): ToolRegistration[]
     },
     {
       name: "reorder_categories",
-      description: `Set the order lists show ingredient categories in, such as the order of the aisles in the owner's shop. ids lists categories first to last; any left out follow in their current order, and ${OTHER_CATEGORY.name} is always last.`,
+      description: `Set the order lists show ingredient categories in, such as the order of the aisles in the owner's shop. ids lists categories first to last; any left out follow in their current order. ${OTHER_CATEGORY.name}, the default, is ordered like the others.`,
       parameters: Type.Object({ ids: Type.Array(Id, { minItems: 1, maxItems: 100 }) }),
       replay: "safe",
       execute: async (args: ReorderArguments) => {

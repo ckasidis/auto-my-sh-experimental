@@ -10,13 +10,14 @@ export type GroceryIngredient = {
 export type GroceryCategory = {
   readonly id: string;
   readonly name: string;
-  /** Where lists show it, lowest first; the default category is last whatever its position. */
+  /** Where lists show it, lowest first. */
   readonly position: number;
 };
 
 /**
- * The default category: every ingredient not given another is in it, and lists show it after every other, as grocery
- * apps do (AnyList's default "Other" category, Apple Reminders' "Other" section). A migration adds it to the store.
+ * The default category: every ingredient not given another is in it, as in grocery apps (AnyList's default "Other"
+ * category, Apple Reminders' "Other" section). It is ordered like any other, and starts last. A migration adds it to
+ * the store.
  */
 export const OTHER_CATEGORY = { id: "category:other", name: "Other", position: 0 } as const;
 
@@ -63,14 +64,8 @@ type Tally = {
 /** Two decimal places: scaling by servings leaves float noise (0.30000000000000004) the list should not show. */
 const round = (quantity: number) => Math.round(quantity * 100) / 100;
 
-/** The order lists show categories in: the owner's, by position, with the default category last. */
+/** The order lists show categories in: the owner's, by position. */
 export function compareCategories(a: GroceryCategory, b: GroceryCategory): number {
-  if (a.id === b.id) return 0;
-
-  if (a.id === OTHER_CATEGORY.id) return 1;
-
-  if (b.id === OTHER_CATEGORY.id) return -1;
-
   return a.position - b.position || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
@@ -87,13 +82,13 @@ export function groceryList(
 ): GroceryItem[] {
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
 
-  // Each category's place in the order; the default one, also for an unknown category, after every other.
+  // Each category's place in the order. An item in an unknown category is in the default one; that one is last when
+  // it is not among the categories either.
   const ranks = new Map(
     [...categories].sort(compareCategories).map((category, index) => [category.id, index]),
   );
 
-  const rank = (item: GroceryItem) =>
-    item.categoryId === OTHER_CATEGORY.id ? ranks.size : (ranks.get(item.categoryId) ?? ranks.size);
+  const rank = (item: GroceryItem) => ranks.get(item.categoryId) ?? ranks.size;
 
   const recipesById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const ingredientsById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));

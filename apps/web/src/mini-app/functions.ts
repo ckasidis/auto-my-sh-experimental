@@ -247,7 +247,7 @@ export const renameCategory = createServerFn({ method: "POST" })
     return plain(renamed);
   });
 
-/** Puts the categories in this order, first to last; Other stays last. */
+/** Puts the categories in this order, first to last, Other among them. */
 export const reorderCategories = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof CategoryOrderInput>) => Value.Parse(CategoryOrderInput, input))

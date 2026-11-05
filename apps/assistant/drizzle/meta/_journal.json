@@ -36,6 +36,13 @@
       "when": 1793800831382,
       "tag": "0004_category_order",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793809520283,
+      "tag": "0005_other_sortable",
+      "breakpoints": true
     }
   ]
 }

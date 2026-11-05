@@ -30,8 +30,8 @@ const categoryItems = (categories: readonly IngredientCategory[]) =>
   Object.fromEntries(categories.map((category) => [category.id, category.name]));
 
 /**
- * The ingredients recipes are made from, under a heading per category in name order and then "Other", the default, as
- * grocery apps list them; each heading adds an ingredient to its category. While Other is the only category it is not
+ * The ingredients recipes are made from, under a heading per category in the owner's order, "Other", the default,
+ * among them, as grocery apps list them; each heading adds an ingredient to its category. While Other is the only category it is not
  * shown: the list is just the ingredients. Categories are managed in settings.
  */
 export function IngredientsPanel() {
