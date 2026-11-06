@@ -12,7 +12,8 @@ export default defineConfig({
       logs: { enabled: true },
       traces: { enabled: true },
     },
-    // The bot's menu button (or Main Mini App) URL in @BotFather.
+    // The Mini Apps' host in @BotFather: the menu button (or Main Mini App) opens `/`, todos and schedules, and
+    // `/meals` and `/workouts` are Mini Apps of their own (`/newapp`).
     domains: ["app.automysh.com"],
     env: {
       // The assistant Worker, over Worker RPC: it checks the Mini App's `initData` and serves the owner's data, so this

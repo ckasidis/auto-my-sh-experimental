@@ -12,7 +12,7 @@ export type PreviousSets = {
 
 /**
  * One exercise's sets in a workout: its warm-ups, marked W, then its working sets, numbered. A row left empty is a set
- * skipped. With `previous`, empty fields show what that set was last time.
+ * skipped, and any row can be removed. With `previous`, empty fields show what that set was last time.
  */
 export function ExerciseSetRows({
   name,
@@ -55,6 +55,7 @@ export function ExerciseSetRows({
             row={row}
             previous={previous?.sets[index]}
             onChange={(next) => setWorking(index, next)}
+            onRemove={() => onChange({ ...rows, sets: rows.sets.toSpliced(index, 1) })}
           />
         ))}
       </div>
@@ -95,8 +96,7 @@ function Row({
   readonly row: SetRow;
   readonly previous: LoggedSet | undefined;
   readonly onChange: (row: SetRow) => void;
-  /** Absent for a working set, which is skipped by leaving it empty. */
-  readonly onRemove?: () => void;
+  readonly onRemove: () => void;
 }) {
   const invalid = rowSet(row) === null;
 
@@ -122,18 +122,16 @@ function Row({
         aria-invalid={invalid}
         className="w-16 text-right tabular-nums"
       />
-      {onRemove !== undefined && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRemove}
-          className="text-muted-foreground"
-          aria-label={`Remove ${description}`}
-        >
-          <XIcon />
-        </Button>
-      )}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={onRemove}
+        className="text-muted-foreground"
+        aria-label={`Remove ${description}`}
+      >
+        <XIcon />
+      </Button>
     </div>
   );
 }

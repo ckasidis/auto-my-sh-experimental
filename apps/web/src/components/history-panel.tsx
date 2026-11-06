@@ -140,7 +140,7 @@ function EditSession({
     <form onSubmit={save} className="grid gap-4">
       <DialogHeader>
         <DialogTitle>Workout</DialogTitle>
-        <DialogDescription>Clear a set's fields to remove it.</DialogDescription>
+        <DialogDescription>Remove a set with its ×.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-1.5">
         <Label htmlFor="session-date">Date</Label>
