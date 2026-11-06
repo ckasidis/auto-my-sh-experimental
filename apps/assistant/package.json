@@ -15,6 +15,9 @@
     },
     "./recipe-book": {
       "types": "./dist/types/src/recipe-book.d.ts"
+    },
+    "./workout-log": {
+      "types": "./dist/types/src/workout-log.d.ts"
     }
   },
   "scripts": {

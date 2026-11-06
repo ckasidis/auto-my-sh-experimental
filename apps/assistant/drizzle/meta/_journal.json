@@ -43,6 +43,13 @@
       "when": 1793809520283,
       "tag": "0005_other_sortable",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793926046801,
+      "tag": "0006_workouts",
+      "breakpoints": true
     }
   ]
 }

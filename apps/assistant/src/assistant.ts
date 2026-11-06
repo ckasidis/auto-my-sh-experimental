@@ -18,11 +18,18 @@ import {
 import { recipesExtension } from "./recipes.ts";
 import { OWNER } from "./telegram.ts";
 import { todosExtension } from "./todos.ts";
+import { workoutsExtension } from "./workouts.ts";
 
 // Available on the Workers Free plan, which rejects models marked `require_workers_paid` (such as GLM 5.3).
 const MODEL_ID = "@cf/zai-org/glm-4.7-flash";
 
-const EXTENSIONS = [chatExtension, schedulesExtension, todosExtension, recipesExtension];
+const EXTENSIONS = [
+  chatExtension,
+  schedulesExtension,
+  todosExtension,
+  recipesExtension,
+  workoutsExtension,
+];
 
 /** The owner's `Assistant` object. Resolve it at each use: a stub is cheap, and a call reaches the object only then. */
 export const assistant = () => exports.Assistant.getByName(OWNER);

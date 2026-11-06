@@ -27,6 +27,14 @@ import {
   type TodoFilter,
   userStore,
 } from "./user-store.ts";
+import type {
+  Exercise,
+  NewExercise,
+  NewWorkoutEntry,
+  WorkoutEntry,
+  WorkoutEntryChanges,
+  WorkoutFilter,
+} from "./workout-log.ts";
 
 export { Assistant } from "./assistant.ts";
 
@@ -34,7 +42,7 @@ export { UserStore } from "./user-store.ts";
 
 /**
  * The Telegram webhook, over HTTP, and, over RPC for the web Worker's service binding, the Mini App's owner check and
- * the owner's todos, recipe book, and schedules without the model; callers check the owner first. The RPC methods are reachable only through a service
+ * the owner's todos, recipe book, workout log, and schedules without the model; callers check the owner first. The RPC methods are reachable only through a service
  * binding, never from the internet. Web types the binding from this class's emitted declarations. The return types are
  * written out: inferred ones carry the Durable Object stubs' `Disposable`, and the binding's `Rpc` types turn a single
  * such object into `never`.
@@ -148,6 +156,38 @@ export default class Server extends WorkerEntrypoint<Env> {
 
   async groceryList(range: DateRange): Promise<GroceryItem[]> {
     return userStore().groceryList(range);
+  }
+
+  async listExercises(): Promise<Exercise[]> {
+    return userStore().listExercises();
+  }
+
+  async addExercise(exercise: NewExercise): Promise<Exercise> {
+    return userStore().addExercise(exercise);
+  }
+
+  async renameExercise(id: string, name: string): Promise<Exercise | null> {
+    return userStore().renameExercise(id, name);
+  }
+
+  async removeExercise(id: string): Promise<boolean> {
+    return userStore().removeExercise(id);
+  }
+
+  async listWorkoutEntries(filter?: WorkoutFilter): Promise<WorkoutEntry[]> {
+    return userStore().listWorkoutEntries(filter);
+  }
+
+  async addWorkoutEntry(entry: NewWorkoutEntry): Promise<WorkoutEntry> {
+    return userStore().addWorkoutEntry(entry);
+  }
+
+  async updateWorkoutEntry(id: string, changes: WorkoutEntryChanges): Promise<WorkoutEntry | null> {
+    return userStore().updateWorkoutEntry(id, changes);
+  }
+
+  async removeWorkoutEntry(id: string): Promise<boolean> {
+    return userStore().removeWorkoutEntry(id);
   }
 
   async listSchedules(): Promise<Schedule[]> {

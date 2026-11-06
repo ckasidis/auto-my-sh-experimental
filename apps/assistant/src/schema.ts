@@ -86,3 +86,28 @@ export const meals = sqliteTable(
   },
   (table) => [index("meals_date").on(table.date)],
 );
+
+/** The exercises the owner does, such as "Push-up" or "Squat". */
+export const exercises = sqliteTable("exercises", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** The workout log: an exercise done on a day, as sets of the same number of reps. */
+export const workoutEntries = sqliteTable(
+  "workout_entries",
+  {
+    id: text().primaryKey(),
+    exerciseId: text("exercise_id")
+      .notNull()
+      .references(() => exercises.id, { onDelete: "cascade" }),
+    /** A calendar date, YYYY-MM-DD: the day it was done, not an instant. */
+    date: text().notNull(),
+    sets: integer().notNull(),
+    /** In each set. */
+    reps: integer().notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("workout_entries_exercise_date").on(table.exerciseId, table.date)],
+);

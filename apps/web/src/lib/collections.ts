@@ -12,6 +12,7 @@ import type {
 } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo, TodoChanges } from "assistant/user-store";
+import type { Exercise, WorkoutEntry, WorkoutEntryChanges } from "assistant/workout-log";
 import { compareCategories } from "utils/groceries";
 import { isCron } from "utils/recurrence";
 import {
@@ -39,6 +40,14 @@ import {
   updateMeal,
   updateRecipe,
   updateTodo,
+  addExercise,
+  addWorkoutEntry,
+  deleteExercise,
+  deleteWorkoutEntry,
+  listExercises,
+  listWorkoutEntries,
+  renameExercise,
+  updateWorkoutEntry,
 } from "@/mini-app/functions";
 
 export const queryClient = new QueryClient();
@@ -361,6 +370,98 @@ export const mealCollection = createCollection(
     onDelete: async ({ transaction, collection }) => {
       await Promise.all(
         transaction.mutations.map(({ original }) => deleteMeal({ data: { id: original.id } })),
+      );
+      await collection.utils.refetch();
+    },
+  }),
+);
+
+/** The changes the store takes for a workout entry edited in the collection. */
+function workoutEntryChanges(changes: Partial<WorkoutEntry>): WorkoutEntryChanges {
+  const result: { -readonly [K in keyof WorkoutEntryChanges]: WorkoutEntryChanges[K] } = {};
+
+  if (changes.exerciseId !== undefined) result.exerciseId = changes.exerciseId;
+
+  if (changes.date !== undefined) result.date = changes.date;
+
+  if (changes.sets !== undefined) result.sets = changes.sets;
+
+  if (changes.reps !== undefined) result.reps = changes.reps;
+
+  return result;
+}
+
+/** The exercises; a change to one is a rename. */
+export const exerciseCollection = createCollection(
+  queryCollectionOptions({
+    id: "exercises",
+    queryKey: ["exercises"],
+    queryFn: () => listExercises(),
+    queryClient,
+    getKey: (exercise: Exercise) => exercise.id,
+    onInsert: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ modified }) =>
+          addExercise({ data: { id: modified.id, name: modified.name } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original, modified }) =>
+          renameExercise({ data: { id: original.id, name: modified.name } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onDelete: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original }) => deleteExercise({ data: { id: original.id } })),
+      );
+      // The server deletes the exercise's entries along with it.
+      await Promise.all([collection.utils.refetch(), workoutEntryCollection.utils.refetch()]);
+    },
+  }),
+);
+
+/** The workout log: every entry, the source of each exercise's history. */
+export const workoutEntryCollection = createCollection(
+  queryCollectionOptions({
+    id: "workout-entries",
+    queryKey: ["workout-entries"],
+    queryFn: () => listWorkoutEntries(),
+    queryClient,
+    getKey: (entry: WorkoutEntry) => entry.id,
+    onInsert: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ modified }) =>
+          addWorkoutEntry({
+            data: {
+              id: modified.id,
+              exerciseId: modified.exerciseId,
+              date: modified.date,
+              sets: modified.sets,
+              reps: modified.reps,
+            },
+          }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original, changes }) =>
+          updateWorkoutEntry({ data: { id: original.id, changes: workoutEntryChanges(changes) } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onDelete: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original }) =>
+          deleteWorkoutEntry({ data: { id: original.id } }),
+        ),
       );
       await collection.utils.refetch();
     },

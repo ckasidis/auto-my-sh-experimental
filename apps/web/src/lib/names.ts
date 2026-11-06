@@ -1,6 +1,6 @@
 /**
  * Whether another item on the list has this name, ignoring case and surrounding spaces. The server keeps one
- * ingredient, and one category, per name, so forms refuse a name already on the list.
+ * ingredient, category, and exercise per name, so forms refuse a name already on the list.
  */
 export const nameTaken = (
   name: string,

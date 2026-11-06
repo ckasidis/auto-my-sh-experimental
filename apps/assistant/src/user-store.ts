@@ -22,6 +22,16 @@ import {
 } from "./recipe-book.ts";
 import { todos } from "./schema.ts";
 import { OWNER } from "./telegram.ts";
+import {
+  type Exercise,
+  type NewExercise,
+  type NewWorkoutEntry,
+  type OwnerWorkouts,
+  type WorkoutEntry,
+  type WorkoutEntryChanges,
+  type WorkoutFilter,
+  WorkoutLog,
+} from "./workout-log.ts";
 
 /** One of the owner's todos. */
 export type Todo = typeof todos.$inferSelect;
@@ -61,12 +71,16 @@ const FILTERS: Record<TodoFilter, SQL | undefined> = {
 /**
  * The owner's data in their own Durable Object SQLite, apart from the conversation: Pi owns the `Assistant` object's
  * storage, and every interface (the chat's tools, the Mini App) reaches the same data through these RPC methods: the
- * todos, and the recipe book (ingredients, recipes, and the meal prep calendar). There is one, named `OWNER`. Every
+ * todos, the recipe book (ingredients, recipes, and the meal prep calendar), and the workout log. There is one, named `OWNER`. Every
  * write is idempotent: an add names its id, and an update sets values, so a caller may retry any of them.
  */
-export class UserStore extends DurableObject<Env> implements OwnerTodos, OwnerRecipes {
+export class UserStore
+  extends DurableObject<Env>
+  implements OwnerTodos, OwnerRecipes, OwnerWorkouts
+{
   readonly #db = drizzle(this.ctx.storage);
   readonly #recipes = new RecipeBook(this.#db);
+  readonly #workouts = new WorkoutLog(this.#db);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -202,5 +216,37 @@ export class UserStore extends DurableObject<Env> implements OwnerTodos, OwnerRe
 
   groceryList(range: DateRange): GroceryItem[] {
     return this.#recipes.groceryList(range);
+  }
+
+  listExercises(): Exercise[] {
+    return this.#workouts.listExercises();
+  }
+
+  addExercise(exercise: NewExercise): Exercise {
+    return this.#workouts.addExercise(exercise);
+  }
+
+  renameExercise(id: string, name: string): Exercise | null {
+    return this.#workouts.renameExercise(id, name);
+  }
+
+  removeExercise(id: string): boolean {
+    return this.#workouts.removeExercise(id);
+  }
+
+  listWorkoutEntries(filter?: WorkoutFilter): WorkoutEntry[] {
+    return this.#workouts.listWorkoutEntries(filter);
+  }
+
+  addWorkoutEntry(entry: NewWorkoutEntry): WorkoutEntry {
+    return this.#workouts.addWorkoutEntry(entry);
+  }
+
+  updateWorkoutEntry(id: string, changes: WorkoutEntryChanges): WorkoutEntry | null {
+    return this.#workouts.updateWorkoutEntry(id, changes);
+  }
+
+  removeWorkoutEntry(id: string): boolean {
+    return this.#workouts.removeWorkoutEntry(id);
   }
 }

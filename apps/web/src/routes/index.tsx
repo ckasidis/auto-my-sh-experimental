@@ -1,22 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarClockIcon, ListTodoIcon, SettingsIcon, UtensilsIcon, XIcon } from "lucide-react";
+import {
+  CalendarClockIcon,
+  DumbbellIcon,
+  ListTodoIcon,
+  SettingsIcon,
+  UtensilsIcon,
+  XIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { MealsPanel } from "@/components/meals-panel";
 import { SchedulesPanel } from "@/components/schedules-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { TodosPanel } from "@/components/todos-panel";
+import { WorkoutsPanel } from "@/components/workouts-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   categoryCollection,
+  exerciseCollection,
   ingredientCollection,
   mealCollection,
   recipeCollection,
   scheduleCollection,
   todoCollection,
+  workoutEntryCollection,
 } from "@/lib/collections";
 import { useFailure } from "@/lib/feedback";
 import { launchData, startWebApp } from "@/lib/telegram";
+
+const SECTIONS = [
+  { value: "todos", label: "Todos", Icon: ListTodoIcon },
+  { value: "schedules", label: "Schedules", Icon: CalendarClockIcon },
+  { value: "meals", label: "Meals", Icon: UtensilsIcon },
+  { value: "workouts", label: "Workouts", Icon: DumbbellIcon },
+] as const;
 
 export const Route = createFileRoute("/")({
   // Telegram's `initData`, which every call is authorized with, exists only in the client, and so do collections.
@@ -32,6 +49,8 @@ export const Route = createFileRoute("/")({
         ingredientCollection.preload(),
         recipeCollection.preload(),
         mealCollection.preload(),
+        exerciseCollection.preload(),
+        workoutEntryCollection.preload(),
       ]);
     }
 
@@ -53,7 +72,7 @@ function Home() {
         <h1 className="text-lg font-semibold">Open this from Telegram</h1>
         <p className="text-sm text-muted-foreground">
           The app runs inside the assistant's chat: tap its menu button to manage todos, schedules,
-          and meals.
+          meals and workouts.
         </p>
       </main>
     );
@@ -75,18 +94,18 @@ function Home() {
       <Tabs defaultValue="todos">
         <div className="flex items-center gap-2">
           <TabsList className="flex-1 bg-card">
-            <TabsTrigger value="todos">
-              <ListTodoIcon />
-              Todos
-            </TabsTrigger>
-            <TabsTrigger value="schedules">
-              <CalendarClockIcon />
-              Schedules
-            </TabsTrigger>
-            <TabsTrigger value="meals">
-              <UtensilsIcon />
-              Meals
-            </TabsTrigger>
+            {SECTIONS.map(({ value, label, Icon }) => (
+              // A phone fits only the open tab's label; the others show their icon.
+              <TabsTrigger
+                key={value}
+                value={value}
+                aria-label={label}
+                className="[&[data-active]>span]:inline"
+              >
+                <Icon />
+                <span className="max-sm:hidden">{label}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
           <Button
             variant="ghost"
@@ -105,6 +124,9 @@ function Home() {
         </TabsContent>
         <TabsContent value="meals" className="pt-3">
           <MealsPanel />
+        </TabsContent>
+        <TabsContent value="workouts" className="pt-3">
+          <WorkoutsPanel />
         </TabsContent>
       </Tabs>
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />

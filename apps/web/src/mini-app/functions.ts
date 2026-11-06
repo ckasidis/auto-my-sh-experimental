@@ -7,6 +7,7 @@ import { launchData } from "@/lib/telegram";
 import type { Ingredient, IngredientCategory, Meal, Recipe } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo } from "assistant/user-store";
+import type { Exercise, WorkoutEntry } from "assistant/workout-log";
 import { copyRecurrence } from "utils/recurrence";
 import { authorizeOwner, owner } from "./owner.server.ts";
 
@@ -161,8 +162,34 @@ const MealUpdateInput = Type.Object({
   }),
 });
 
+// Limits match the chat's workout tools.
+const Sets = Type.Integer({ minimum: 1, maximum: 100 });
+const Reps = Type.Integer({ minimum: 1, maximum: 10_000 });
+
+const NewExerciseInput = Type.Object({ id: appId("exercise"), name: Name });
+
+const ExerciseRenameInput = Type.Object({ id: Id, name: Name });
+
+const NewWorkoutEntryInput = Type.Object({
+  id: appId("workout"),
+  exerciseId: Id,
+  date: CalendarDate,
+  sets: Sets,
+  reps: Reps,
+});
+
+const WorkoutEntryUpdateInput = Type.Object({
+  id: Id,
+  changes: Type.Object({
+    exerciseId: Type.Optional(Id),
+    date: Type.Optional(CalendarDate),
+    sets: Type.Optional(Sets),
+    reps: Type.Optional(Reps),
+  }),
+});
+
 /**
- * A plain copy of a recipe-book value. RPC results carry `Symbol.dispose` disposers on every array and object, which
+ * A plain copy of a recipe-book or workout-log value. RPC results carry `Symbol.dispose` disposers on every array and object, which
  * are not sent to the browser; these values are JSON already, and the round trip drops them.
  */
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -341,3 +368,60 @@ export const deleteMeal = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
   .handler(async ({ data }) => owner().removeMeal(data.id));
+
+/** Every exercise, by name. */
+export const listExercises = createServerFn({ method: "GET" })
+  .middleware([ownerOnly])
+  .handler(async (): Promise<Exercise[]> => plain(await owner().listExercises()));
+
+export const addExercise = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof NewExerciseInput>) => Value.Parse(NewExerciseInput, input))
+  .handler(async ({ data }): Promise<Exercise> => plain(await owner().addExercise(data)));
+
+export const renameExercise = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof ExerciseRenameInput>) => Value.Parse(ExerciseRenameInput, input))
+  .handler(async ({ data }): Promise<Exercise> => {
+    const renamed = await owner().renameExercise(data.id, data.name);
+
+    if (renamed === null) throw new Error(`No exercise has id ${data.id}`);
+
+    return plain(renamed);
+  });
+
+/** Deletes the exercise and its history. */
+export const deleteExercise = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
+  .handler(async ({ data }) => owner().removeExercise(data.id));
+
+/** The whole workout log, newest day first. */
+export const listWorkoutEntries = createServerFn({ method: "GET" })
+  .middleware([ownerOnly])
+  .handler(async (): Promise<WorkoutEntry[]> => plain(await owner().listWorkoutEntries()));
+
+export const addWorkoutEntry = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof NewWorkoutEntryInput>) =>
+    Value.Parse(NewWorkoutEntryInput, input),
+  )
+  .handler(async ({ data }): Promise<WorkoutEntry> => plain(await owner().addWorkoutEntry(data)));
+
+export const updateWorkoutEntry = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof WorkoutEntryUpdateInput>) =>
+    Value.Parse(WorkoutEntryUpdateInput, input),
+  )
+  .handler(async ({ data }): Promise<WorkoutEntry> => {
+    const updated = await owner().updateWorkoutEntry(data.id, data.changes);
+
+    if (updated === null) throw new Error(`No entry has id ${data.id}`);
+
+    return plain(updated);
+  });
+
+export const deleteWorkoutEntry = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
+  .handler(async ({ data }) => owner().removeWorkoutEntry(data.id));

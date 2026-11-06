@@ -46,6 +46,9 @@ export const weekOf = (monday: string): string[] =>
 /** "Wed, 4 Nov". */
 export const formatDay = (date: string): string => day.format(atMidnight(date));
 
+/** "4 Nov". */
+export const formatShortDate = (date: string): string => short.format(atMidnight(date));
+
 /** "2 Nov – 8 Nov". */
 export const formatDateRange = (from: string, to: string): string =>
   `${short.format(atMidnight(from))} – ${short.format(atMidnight(to))}`;

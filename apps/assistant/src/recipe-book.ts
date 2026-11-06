@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { type GroceryItem, groceryList, OTHER_CATEGORY } from "utils/groceries";
 import { ingredientCategories, ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
 
@@ -116,7 +117,8 @@ export function isCalendarDate(text: string): boolean {
   return Number.isFinite(date.getTime()) && date.toISOString().startsWith(text);
 }
 
-function checkDate(date: string): void {
+/** Refuses text that is not a real YYYY-MM-DD date. */
+export function checkDate(date: string): void {
   if (!isCalendarDate(date)) throw new Error(`${date} is not a calendar date (YYYY-MM-DD)`);
 }
 
@@ -136,7 +138,7 @@ function checkLines(lines: readonly RecipeLine[]): void {
 
 const SLOT_ORDER = sql`case ${meals.slot} when 'breakfast' then 0 when 'lunch' then 1 when 'dinner' then 2 else 3 end`;
 
-type Database = DrizzleSqliteDODatabase<Record<string, never>>;
+export type Database = DrizzleSqliteDODatabase<Record<string, never>>;
 
 /** The column allows null, which the store never writes after the default category's migration; read one as it. */
 const categorized = (row: IngredientRow): Ingredient => ({
@@ -145,10 +147,7 @@ const categorized = (row: IngredientRow): Ingredient => ({
 });
 
 /** Whether the column holds this name, ignoring case and surrounding spaces. */
-function sameName(
-  column: typeof ingredients.name | typeof ingredientCategories.name,
-  name: string,
-) {
+export function sameName(column: SQLiteColumn, name: string) {
   return sql`lower(trim(${column})) = lower(trim(${name}))`;
 }
 
