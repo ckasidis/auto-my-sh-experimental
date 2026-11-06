@@ -20,10 +20,11 @@ import {
   exerciseCollection,
   ingredientCollection,
   mealCollection,
+  planCollection,
   recipeCollection,
   scheduleCollection,
+  sessionCollection,
   todoCollection,
-  workoutEntryCollection,
 } from "@/lib/collections";
 import { useFailure } from "@/lib/feedback";
 import { launchData, startWebApp } from "@/lib/telegram";
@@ -50,7 +51,8 @@ export const Route = createFileRoute("/")({
         recipeCollection.preload(),
         mealCollection.preload(),
         exerciseCollection.preload(),
-        workoutEntryCollection.preload(),
+        planCollection.preload(),
+        sessionCollection.preload(),
       ]);
     }
 

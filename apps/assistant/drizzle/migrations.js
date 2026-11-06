@@ -6,6 +6,8 @@ import m0003 from './0003_other_category.sql';
 import m0004 from './0004_category_order.sql';
 import m0005 from './0005_other_sortable.sql';
 import m0006 from './0006_workouts.sql';
+import m0007 from './0007_workout_sessions.sql';
+import m0008 from './0008_drop_workout_entries.sql';
 
   export default {
     journal,
@@ -16,7 +18,9 @@ m0002,
 m0003,
 m0004,
 m0005,
-m0006
+m0006,
+m0007,
+m0008
     }
   }
   

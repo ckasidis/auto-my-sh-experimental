@@ -50,6 +50,20 @@
       "when": 1793926046801,
       "tag": "0006_workouts",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793927480479,
+      "tag": "0007_workout_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793927488455,
+      "tag": "0008_drop_workout_entries",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,7 @@ import type {
 } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo, TodoChanges } from "assistant/user-store";
-import type { Exercise, WorkoutEntry, WorkoutEntryChanges } from "assistant/workout-log";
+import type { Exercise, WorkoutPlan, WorkoutSession } from "assistant/workout-log";
 import { compareCategories } from "utils/groceries";
 import { isCron } from "utils/recurrence";
 import {
@@ -41,13 +41,17 @@ import {
   updateRecipe,
   updateTodo,
   addExercise,
-  addWorkoutEntry,
+  addPlan,
+  addSession,
   deleteExercise,
-  deleteWorkoutEntry,
+  deletePlan,
+  deleteSession,
   listExercises,
-  listWorkoutEntries,
+  listPlans,
+  listSessions,
   renameExercise,
-  updateWorkoutEntry,
+  updatePlan,
+  updateSession,
 } from "@/mini-app/functions";
 
 export const queryClient = new QueryClient();
@@ -376,21 +380,6 @@ export const mealCollection = createCollection(
   }),
 );
 
-/** The changes the store takes for a workout entry edited in the collection. */
-function workoutEntryChanges(changes: Partial<WorkoutEntry>): WorkoutEntryChanges {
-  const result: { -readonly [K in keyof WorkoutEntryChanges]: WorkoutEntryChanges[K] } = {};
-
-  if (changes.exerciseId !== undefined) result.exerciseId = changes.exerciseId;
-
-  if (changes.date !== undefined) result.date = changes.date;
-
-  if (changes.sets !== undefined) result.sets = changes.sets;
-
-  if (changes.reps !== undefined) result.reps = changes.reps;
-
-  return result;
-}
-
 /** The exercises; a change to one is a rename. */
 export const exerciseCollection = createCollection(
   queryCollectionOptions({
@@ -419,30 +408,74 @@ export const exerciseCollection = createCollection(
       await Promise.all(
         transaction.mutations.map(({ original }) => deleteExercise({ data: { id: original.id } })),
       );
-      // The server deletes the exercise's entries along with it.
-      await Promise.all([collection.utils.refetch(), workoutEntryCollection.utils.refetch()]);
+      // The server takes the exercise out of the plans and sessions along with it.
+      await Promise.all([
+        collection.utils.refetch(),
+        planCollection.utils.refetch(),
+        sessionCollection.utils.refetch(),
+      ]);
     },
   }),
 );
 
-/** The workout log: every entry, the source of each exercise's history. */
-export const workoutEntryCollection = createCollection(
+/** The workout plans; a change to one sets its name, its exercises, or both. */
+export const planCollection = createCollection(
   queryCollectionOptions({
-    id: "workout-entries",
-    queryKey: ["workout-entries"],
-    queryFn: () => listWorkoutEntries(),
+    id: "plans",
+    queryKey: ["plans"],
+    queryFn: () => listPlans(),
     queryClient,
-    getKey: (entry: WorkoutEntry) => entry.id,
+    getKey: (plan: WorkoutPlan) => plan.id,
     onInsert: async ({ transaction, collection }) => {
       await Promise.all(
         transaction.mutations.map(({ modified }) =>
-          addWorkoutEntry({
+          addPlan({
+            data: { id: modified.id, name: modified.name, exercises: modified.exercises },
+          }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onUpdate: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original, changes }) =>
+          updatePlan({
+            data: {
+              id: original.id,
+              changes: { name: changes.name, exercises: changes.exercises },
+            },
+          }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onDelete: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original }) => deletePlan({ data: { id: original.id } })),
+      );
+      // The server takes the plan off its sessions along with it.
+      await Promise.all([collection.utils.refetch(), sessionCollection.utils.refetch()]);
+    },
+  }),
+);
+
+/** The workout log: every session with its sets, the source of each exercise's history. */
+export const sessionCollection = createCollection(
+  queryCollectionOptions({
+    id: "sessions",
+    queryKey: ["sessions"],
+    queryFn: () => listSessions(),
+    queryClient,
+    getKey: (session: WorkoutSession) => session.id,
+    onInsert: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ modified }) =>
+          addSession({
             data: {
               id: modified.id,
-              exerciseId: modified.exerciseId,
               date: modified.date,
+              planId: modified.planId,
               sets: modified.sets,
-              reps: modified.reps,
             },
           }),
         ),
@@ -452,16 +485,16 @@ export const workoutEntryCollection = createCollection(
     onUpdate: async ({ transaction, collection }) => {
       await Promise.all(
         transaction.mutations.map(({ original, changes }) =>
-          updateWorkoutEntry({ data: { id: original.id, changes: workoutEntryChanges(changes) } }),
+          updateSession({
+            data: { id: original.id, changes: { date: changes.date, sets: changes.sets } },
+          }),
         ),
       );
       await collection.utils.refetch();
     },
     onDelete: async ({ transaction, collection }) => {
       await Promise.all(
-        transaction.mutations.map(({ original }) =>
-          deleteWorkoutEntry({ data: { id: original.id } }),
-        ),
+        transaction.mutations.map(({ original }) => deleteSession({ data: { id: original.id } })),
       );
       await collection.utils.refetch();
     },

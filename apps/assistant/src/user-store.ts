@@ -25,12 +25,15 @@ import { OWNER } from "./telegram.ts";
 import {
   type Exercise,
   type NewExercise,
-  type NewWorkoutEntry,
+  type NewWorkoutPlan,
+  type NewWorkoutSession,
   type OwnerWorkouts,
-  type WorkoutEntry,
-  type WorkoutEntryChanges,
-  type WorkoutFilter,
+  type SessionFilter,
   WorkoutLog,
+  type WorkoutPlan,
+  type WorkoutPlanChanges,
+  type WorkoutSession,
+  type WorkoutSessionChanges,
 } from "./workout-log.ts";
 
 /** One of the owner's todos. */
@@ -71,7 +74,7 @@ const FILTERS: Record<TodoFilter, SQL | undefined> = {
 /**
  * The owner's data in their own Durable Object SQLite, apart from the conversation: Pi owns the `Assistant` object's
  * storage, and every interface (the chat's tools, the Mini App) reaches the same data through these RPC methods: the
- * todos, the recipe book (ingredients, recipes, and the meal prep calendar), and the workout log. There is one, named `OWNER`. Every
+ * todos, the recipe book (ingredients, recipes, and the meal prep calendar), and the workout log (exercises, plans, and sessions). There is one, named `OWNER`. Every
  * write is idempotent: an add names its id, and an update sets values, so a caller may retry any of them.
  */
 export class UserStore
@@ -234,19 +237,35 @@ export class UserStore
     return this.#workouts.removeExercise(id);
   }
 
-  listWorkoutEntries(filter?: WorkoutFilter): WorkoutEntry[] {
-    return this.#workouts.listWorkoutEntries(filter);
+  listPlans(): WorkoutPlan[] {
+    return this.#workouts.listPlans();
   }
 
-  addWorkoutEntry(entry: NewWorkoutEntry): WorkoutEntry {
-    return this.#workouts.addWorkoutEntry(entry);
+  addPlan(plan: NewWorkoutPlan): WorkoutPlan {
+    return this.#workouts.addPlan(plan);
   }
 
-  updateWorkoutEntry(id: string, changes: WorkoutEntryChanges): WorkoutEntry | null {
-    return this.#workouts.updateWorkoutEntry(id, changes);
+  updatePlan(id: string, changes: WorkoutPlanChanges): WorkoutPlan | null {
+    return this.#workouts.updatePlan(id, changes);
   }
 
-  removeWorkoutEntry(id: string): boolean {
-    return this.#workouts.removeWorkoutEntry(id);
+  removePlan(id: string): boolean {
+    return this.#workouts.removePlan(id);
+  }
+
+  listSessions(filter?: SessionFilter): WorkoutSession[] {
+    return this.#workouts.listSessions(filter);
+  }
+
+  addSession(session: NewWorkoutSession): WorkoutSession {
+    return this.#workouts.addSession(session);
+  }
+
+  updateSession(id: string, changes: WorkoutSessionChanges): WorkoutSession | null {
+    return this.#workouts.updateSession(id, changes);
+  }
+
+  removeSession(id: string): boolean {
+    return this.#workouts.removeSession(id);
   }
 }

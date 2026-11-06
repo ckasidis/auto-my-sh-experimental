@@ -100,3 +100,98 @@ describe("the migration that orders Other like the others", () => {
     ]);
   });
 });
+
+describe("the workout sessions' migration", () => {
+  it("makes a session per day of the log, with a set per row of each entry in the order logged", () => {
+    const db = new DatabaseSync(":memory:");
+
+    for (const name of [
+      "0000_todos",
+      "0001_recipes",
+      "0002_ingredient_categories",
+      "0003_other_category",
+      "0004_category_order",
+      "0005_other_sortable",
+      "0006_workouts",
+    ]) {
+      migrate(db, name);
+    }
+
+    db.exec(`
+      INSERT INTO exercises (id, name, created_at) VALUES ('squat', 'Squat', 1), ('push', 'Push-up', 1);
+      INSERT INTO workout_entries (id, exercise_id, date, sets, reps, created_at) VALUES
+        ('b', 'push', '2026-11-02', 1, 15, 20),
+        ('a', 'squat', '2026-11-02', 2, 8, 10),
+        ('c', 'squat', '2026-11-04', 3, 5, 30);
+    `);
+
+    migrate(db, "0007_workout_sessions");
+    migrate(db, "0008_drop_workout_entries");
+
+    expect(
+      db.prepare("SELECT id, date, plan_id, created_at FROM workout_sessions ORDER BY date").all(),
+    ).toEqual([
+      { id: "session:2026-11-02", date: "2026-11-02", plan_id: null, created_at: 10 },
+      { id: "session:2026-11-04", date: "2026-11-04", plan_id: null, created_at: 30 },
+    ]);
+    expect(
+      db
+        .prepare(
+          "SELECT session_id, position, exercise_id, warmup, reps, weight FROM session_sets ORDER BY session_id, position",
+        )
+        .all(),
+    ).toEqual([
+      {
+        session_id: "session:2026-11-02",
+        position: 0,
+        exercise_id: "squat",
+        warmup: 0,
+        reps: 8,
+        weight: null,
+      },
+      {
+        session_id: "session:2026-11-02",
+        position: 1,
+        exercise_id: "squat",
+        warmup: 0,
+        reps: 8,
+        weight: null,
+      },
+      {
+        session_id: "session:2026-11-02",
+        position: 2,
+        exercise_id: "push",
+        warmup: 0,
+        reps: 15,
+        weight: null,
+      },
+      {
+        session_id: "session:2026-11-04",
+        position: 0,
+        exercise_id: "squat",
+        warmup: 0,
+        reps: 5,
+        weight: null,
+      },
+      {
+        session_id: "session:2026-11-04",
+        position: 1,
+        exercise_id: "squat",
+        warmup: 0,
+        reps: 5,
+        weight: null,
+      },
+      {
+        session_id: "session:2026-11-04",
+        position: 2,
+        exercise_id: "squat",
+        warmup: 0,
+        reps: 5,
+        weight: null,
+      },
+    ]);
+    expect(
+      db.prepare("SELECT name FROM sqlite_master WHERE name = 'workout_entries'").all(),
+    ).toEqual([]);
+  });
+});

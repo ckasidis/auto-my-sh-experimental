@@ -94,20 +94,63 @@ export const exercises = sqliteTable("exercises", {
   createdAt: integer("created_at").notNull(),
 });
 
-/** The workout log: an exercise done on a day, as sets of the same number of reps. */
-export const workoutEntries = sqliteTable(
-  "workout_entries",
+/** A named list of exercises to do in a workout, each with how many working sets. */
+export const workoutPlans = sqliteTable("workout_plans", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** A plan's exercises, in the order the workout goes through them. */
+export const planExercises = sqliteTable(
+  "plan_exercises",
   {
-    id: text().primaryKey(),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => workoutPlans.id, { onDelete: "cascade" }),
+    position: integer().notNull(),
     exerciseId: text("exercise_id")
       .notNull()
       .references(() => exercises.id, { onDelete: "cascade" }),
+    /** Working sets; warm-ups are added in the workout. */
+    sets: integer().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.planId, table.position] })],
+);
+
+/** One workout done on a day, from a plan or not. */
+export const workoutSessions = sqliteTable(
+  "workout_sessions",
+  {
+    id: text().primaryKey(),
     /** A calendar date, YYYY-MM-DD: the day it was done, not an instant. */
     date: text().notNull(),
-    sets: integer().notNull(),
-    /** In each set. */
-    reps: integer().notNull(),
+    /** The plan it was started from; null for none, or once that plan is deleted. */
+    planId: text("plan_id").references(() => workoutPlans.id, { onDelete: "set null" }),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [index("workout_entries_exercise_date").on(table.exerciseId, table.date)],
+  (table) => [index("workout_sessions_date").on(table.date)],
+);
+
+/** A session's sets, in the order they were done. */
+export const sessionSets = sqliteTable(
+  "session_sets",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => workoutSessions.id, { onDelete: "cascade" }),
+    position: integer().notNull(),
+    exerciseId: text("exercise_id")
+      .notNull()
+      .references(() => exercises.id, { onDelete: "cascade" }),
+    /** A warm-up set is kept in the history but left out of the stats. */
+    warmup: integer({ mode: "boolean" }).notNull().default(false),
+    reps: integer().notNull(),
+    /** In kg; null for one done without added weight. */
+    weight: real(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.position] }),
+    index("session_sets_exercise").on(table.exerciseId),
+  ],
 );

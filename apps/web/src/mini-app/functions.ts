@@ -7,7 +7,7 @@ import { launchData } from "@/lib/telegram";
 import type { Ingredient, IngredientCategory, Meal, Recipe } from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo } from "assistant/user-store";
-import type { Exercise, WorkoutEntry } from "assistant/workout-log";
+import type { Exercise, WorkoutPlan, WorkoutSession } from "assistant/workout-log";
 import { copyRecurrence } from "utils/recurrence";
 import { authorizeOwner, owner } from "./owner.server.ts";
 
@@ -163,29 +163,42 @@ const MealUpdateInput = Type.Object({
 });
 
 // Limits match the chat's workout tools.
-const Sets = Type.Integer({ minimum: 1, maximum: 100 });
-const Reps = Type.Integer({ minimum: 1, maximum: 10_000 });
+const PlanExercises = Type.Array(
+  Type.Object({ exerciseId: Id, sets: Type.Integer({ minimum: 1, maximum: 20 }) }),
+  { maxItems: 50 },
+);
+
+const SessionSets = Type.Array(
+  Type.Object({
+    exerciseId: Id,
+    warmup: Type.Boolean(),
+    reps: Type.Integer({ minimum: 1, maximum: 10_000 }),
+    weight: Type.Union([Type.Number({ minimum: 0, maximum: 10_000 }), Type.Null()]),
+  }),
+  { minItems: 1, maxItems: 500 },
+);
 
 const NewExerciseInput = Type.Object({ id: appId("exercise"), name: Name });
 
 const ExerciseRenameInput = Type.Object({ id: Id, name: Name });
 
-const NewWorkoutEntryInput = Type.Object({
-  id: appId("workout"),
-  exerciseId: Id,
-  date: CalendarDate,
-  sets: Sets,
-  reps: Reps,
+const NewPlanInput = Type.Object({ id: appId("plan"), name: Name, exercises: PlanExercises });
+
+const PlanUpdateInput = Type.Object({
+  id: Id,
+  changes: Type.Object({ name: Type.Optional(Name), exercises: Type.Optional(PlanExercises) }),
 });
 
-const WorkoutEntryUpdateInput = Type.Object({
+const NewSessionInput = Type.Object({
+  id: appId("session"),
+  date: CalendarDate,
+  planId: Type.Union([Id, Type.Null()]),
+  sets: SessionSets,
+});
+
+const SessionUpdateInput = Type.Object({
   id: Id,
-  changes: Type.Object({
-    exerciseId: Type.Optional(Id),
-    date: Type.Optional(CalendarDate),
-    sets: Type.Optional(Sets),
-    reps: Type.Optional(Reps),
-  }),
+  changes: Type.Object({ date: Type.Optional(CalendarDate), sets: Type.Optional(SessionSets) }),
 });
 
 /**
@@ -396,32 +409,55 @@ export const deleteExercise = createServerFn({ method: "POST" })
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
   .handler(async ({ data }) => owner().removeExercise(data.id));
 
-/** The whole workout log, newest day first. */
-export const listWorkoutEntries = createServerFn({ method: "GET" })
+/** Every plan, by name. */
+export const listPlans = createServerFn({ method: "GET" })
   .middleware([ownerOnly])
-  .handler(async (): Promise<WorkoutEntry[]> => plain(await owner().listWorkoutEntries()));
+  .handler(async (): Promise<WorkoutPlan[]> => plain(await owner().listPlans()));
 
-export const addWorkoutEntry = createServerFn({ method: "POST" })
+export const addPlan = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
-  .validator((input: Static<typeof NewWorkoutEntryInput>) =>
-    Value.Parse(NewWorkoutEntryInput, input),
-  )
-  .handler(async ({ data }): Promise<WorkoutEntry> => plain(await owner().addWorkoutEntry(data)));
+  .validator((input: Static<typeof NewPlanInput>) => Value.Parse(NewPlanInput, input))
+  .handler(async ({ data }): Promise<WorkoutPlan> => plain(await owner().addPlan(data)));
 
-export const updateWorkoutEntry = createServerFn({ method: "POST" })
+export const updatePlan = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
-  .validator((input: Static<typeof WorkoutEntryUpdateInput>) =>
-    Value.Parse(WorkoutEntryUpdateInput, input),
-  )
-  .handler(async ({ data }): Promise<WorkoutEntry> => {
-    const updated = await owner().updateWorkoutEntry(data.id, data.changes);
+  .validator((input: Static<typeof PlanUpdateInput>) => Value.Parse(PlanUpdateInput, input))
+  .handler(async ({ data }): Promise<WorkoutPlan> => {
+    const updated = await owner().updatePlan(data.id, data.changes);
 
-    if (updated === null) throw new Error(`No entry has id ${data.id}`);
+    if (updated === null) throw new Error(`No plan has id ${data.id}`);
 
     return plain(updated);
   });
 
-export const deleteWorkoutEntry = createServerFn({ method: "POST" })
+/** Deletes the plan; the sessions done from it are kept. */
+export const deletePlan = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
-  .handler(async ({ data }) => owner().removeWorkoutEntry(data.id));
+  .handler(async ({ data }) => owner().removePlan(data.id));
+
+/** Every logged session, newest first. */
+export const listSessions = createServerFn({ method: "GET" })
+  .middleware([ownerOnly])
+  .handler(async (): Promise<WorkoutSession[]> => plain(await owner().listSessions()));
+
+export const addSession = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof NewSessionInput>) => Value.Parse(NewSessionInput, input))
+  .handler(async ({ data }): Promise<WorkoutSession> => plain(await owner().addSession(data)));
+
+export const updateSession = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof SessionUpdateInput>) => Value.Parse(SessionUpdateInput, input))
+  .handler(async ({ data }): Promise<WorkoutSession> => {
+    const updated = await owner().updateSession(data.id, data.changes);
+
+    if (updated === null) throw new Error(`No session has id ${data.id}`);
+
+    return plain(updated);
+  });
+
+export const deleteSession = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
+  .handler(async ({ data }) => owner().removeSession(data.id));

@@ -30,10 +30,13 @@ import {
 import type {
   Exercise,
   NewExercise,
-  NewWorkoutEntry,
-  WorkoutEntry,
-  WorkoutEntryChanges,
-  WorkoutFilter,
+  NewWorkoutPlan,
+  NewWorkoutSession,
+  SessionFilter,
+  WorkoutPlan,
+  WorkoutPlanChanges,
+  WorkoutSession,
+  WorkoutSessionChanges,
 } from "./workout-log.ts";
 
 export { Assistant } from "./assistant.ts";
@@ -174,20 +177,36 @@ export default class Server extends WorkerEntrypoint<Env> {
     return userStore().removeExercise(id);
   }
 
-  async listWorkoutEntries(filter?: WorkoutFilter): Promise<WorkoutEntry[]> {
-    return userStore().listWorkoutEntries(filter);
+  async listPlans(): Promise<WorkoutPlan[]> {
+    return userStore().listPlans();
   }
 
-  async addWorkoutEntry(entry: NewWorkoutEntry): Promise<WorkoutEntry> {
-    return userStore().addWorkoutEntry(entry);
+  async addPlan(plan: NewWorkoutPlan): Promise<WorkoutPlan> {
+    return userStore().addPlan(plan);
   }
 
-  async updateWorkoutEntry(id: string, changes: WorkoutEntryChanges): Promise<WorkoutEntry | null> {
-    return userStore().updateWorkoutEntry(id, changes);
+  async updatePlan(id: string, changes: WorkoutPlanChanges): Promise<WorkoutPlan | null> {
+    return userStore().updatePlan(id, changes);
   }
 
-  async removeWorkoutEntry(id: string): Promise<boolean> {
-    return userStore().removeWorkoutEntry(id);
+  async removePlan(id: string): Promise<boolean> {
+    return userStore().removePlan(id);
+  }
+
+  async listSessions(filter?: SessionFilter): Promise<WorkoutSession[]> {
+    return userStore().listSessions(filter);
+  }
+
+  async addSession(session: NewWorkoutSession): Promise<WorkoutSession> {
+    return userStore().addSession(session);
+  }
+
+  async updateSession(id: string, changes: WorkoutSessionChanges): Promise<WorkoutSession | null> {
+    return userStore().updateSession(id, changes);
+  }
+
+  async removeSession(id: string): Promise<boolean> {
+    return userStore().removeSession(id);
   }
 
   async listSchedules(): Promise<Schedule[]> {
