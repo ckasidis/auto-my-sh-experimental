@@ -3,6 +3,7 @@ import type { Exercise, WorkoutSession } from "assistant/workout-log";
 import { PlusIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { BottomAction } from "@/components/bottom-bar";
 import { Button } from "@/components/ui/button";
 import {
   type ChartConfig,
@@ -64,7 +65,9 @@ export function ExercisesPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <AddExercise existing={exercises.data} />
+      <BottomAction>
+        <AddExercise existing={exercises.data} />
+      </BottomAction>
       {exercises.data.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">No exercises yet.</p>
       ) : (

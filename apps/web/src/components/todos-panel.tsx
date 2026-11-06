@@ -2,6 +2,7 @@ import { isNull, not, useLiveQuery } from "@tanstack/react-db";
 import type { Todo } from "assistant/user-store";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { BottomAction } from "@/components/bottom-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -45,7 +46,9 @@ export function TodosPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <AddTodo />
+      <BottomAction>
+        <AddTodo />
+      </BottomAction>
       {open.data.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing to do.</p>
       ) : (

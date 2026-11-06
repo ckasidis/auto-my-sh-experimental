@@ -2,6 +2,7 @@ import { type Transaction, useLiveQuery } from "@tanstack/react-db";
 import type { Exercise, WorkoutPlan } from "assistant/workout-log";
 import { GripVerticalIcon, PlusIcon, XIcon } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
+import { BottomAction } from "@/components/bottom-bar";
 import { Choice } from "@/components/choice";
 import { Sortable, SortableItem, SortableItemHandle } from "@/components/reui/sortable";
 import { Button } from "@/components/ui/button";
@@ -50,10 +51,12 @@ export function PlansPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Button variant="outline" onClick={() => setOpen({ kind: "add" })}>
-        <PlusIcon />
-        New plan
-      </Button>
+      <BottomAction>
+        <Button className="h-10 w-full" onClick={() => setOpen({ kind: "add" })}>
+          <PlusIcon />
+          New plan
+        </Button>
+      </BottomAction>
       {plans.data.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted-foreground">No plans yet.</p>
       ) : (

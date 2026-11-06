@@ -8,6 +8,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { BottomSlot } from "@/components/bottom-bar";
 import { MealsPanel } from "@/components/meals-panel";
 import { SchedulesPanel } from "@/components/schedules-panel";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -28,6 +29,7 @@ import {
 } from "@/lib/collections";
 import { useFailure } from "@/lib/feedback";
 import { launchData, startWebApp } from "@/lib/telegram";
+import { cn } from "@/lib/utils";
 
 const SECTIONS = [
   { value: "todos", label: "Todos", Icon: ListTodoIcon },
@@ -35,6 +37,10 @@ const SECTIONS = [
   { value: "meals", label: "Meals", Icon: UtensilsIcon },
   { value: "workouts", label: "Workouts", Icon: DumbbellIcon },
 ] as const;
+
+/** A tab bar item: its icon over its label, as a phone's tab bar shows them. */
+const BAR_ITEM =
+  "inline-flex h-auto flex-1 flex-col items-center justify-center gap-0.5 rounded-lg border-0 py-1.5 text-[0.7rem] font-medium [&_svg:not([class*='size-'])]:size-5 data-active:bg-transparent data-active:text-primary data-active:shadow-none dark:data-active:bg-transparent dark:data-active:text-primary";
 
 export const Route = createFileRoute("/")({
   // Telegram's `initData`, which every call is authorized with, exists only in the client, and so do collections.
@@ -65,6 +71,19 @@ function Home() {
   const { inTelegram } = Route.useLoaderData();
   const [failure, dismiss] = useFailure();
   const [settings, setSettings] = useState(false);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [bar, setBar] = useState<HTMLElement | null>(null);
+  const [barHeight, setBarHeight] = useState(0);
+
+  useEffect(() => {
+    if (bar === null) return;
+
+    const observer = new ResizeObserver(() => setBarHeight(bar.offsetHeight));
+
+    observer.observe(bar);
+
+    return () => observer.disconnect();
+  }, [bar]);
 
   useEffect(startWebApp, []);
 
@@ -81,57 +100,66 @@ function Home() {
   }
 
   return (
-    <main className="mx-auto max-w-md px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      {failure !== null && (
-        <div
-          role="alert"
-          className="mb-3 flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    <Tabs defaultValue="todos">
+      <BottomSlot.Provider value={slot}>
+        <main
+          className="mx-auto max-w-md px-4 pt-3"
+          // Clears the bottom bar, whose height changes with the open tab's action.
+          style={{ paddingBottom: barHeight + 24 }}
         >
-          <p className="flex-1">Not saved: {failure}</p>
-          <Button variant="ghost" size="icon-xs" onClick={dismiss} aria-label="Dismiss">
-            <XIcon />
-          </Button>
+          {failure !== null && (
+            <div
+              role="alert"
+              className="mb-3 flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              <p className="flex-1">Not saved: {failure}</p>
+              <Button variant="ghost" size="icon-xs" onClick={dismiss} aria-label="Dismiss">
+                <XIcon />
+              </Button>
+            </div>
+          )}
+          <TabsContent value="todos">
+            <TodosPanel />
+          </TabsContent>
+          <TabsContent value="schedules">
+            <SchedulesPanel />
+          </TabsContent>
+          <TabsContent value="meals">
+            <MealsPanel />
+          </TabsContent>
+          <TabsContent value="workouts">
+            <WorkoutsPanel />
+          </TabsContent>
+        </main>
+      </BottomSlot.Provider>
+      {/* Pinned to the bottom, within thumb's reach: the open tab's action, then the tabs and settings. */}
+      <div
+        ref={setBar}
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="mx-auto grid max-w-md gap-2 px-4 pt-2">
+          <div ref={setSlot} className="empty:hidden" />
+          <div className="flex items-stretch">
+            <TabsList className="h-auto flex-1 bg-transparent p-0 group-data-horizontal/tabs:h-auto">
+              {SECTIONS.map(({ value, label, Icon }) => (
+                <TabsTrigger key={value} value={value} className={BAR_ITEM}>
+                  <Icon />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <button
+              type="button"
+              onClick={() => setSettings(true)}
+              className={cn(BAR_ITEM, "flex-none px-3 text-foreground/60")}
+            >
+              <SettingsIcon />
+              Settings
+            </button>
+          </div>
         </div>
-      )}
-      <Tabs defaultValue="todos">
-        <div className="flex items-center gap-2">
-          <TabsList className="flex-1 bg-card">
-            {SECTIONS.map(({ value, label, Icon }) => (
-              // A phone fits only the open tab's label; the others show their icon.
-              <TabsTrigger
-                key={value}
-                value={value}
-                aria-label={label}
-                className="[&[data-active]>span]:inline"
-              >
-                <Icon />
-                <span className="max-sm:hidden">{label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSettings(true)}
-            aria-label="Settings"
-          >
-            <SettingsIcon />
-          </Button>
-        </div>
-        <TabsContent value="todos" className="pt-3">
-          <TodosPanel />
-        </TabsContent>
-        <TabsContent value="schedules" className="pt-3">
-          <SchedulesPanel />
-        </TabsContent>
-        <TabsContent value="meals" className="pt-3">
-          <MealsPanel />
-        </TabsContent>
-        <TabsContent value="workouts" className="pt-3">
-          <WorkoutsPanel />
-        </TabsContent>
-      </Tabs>
+      </div>
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />
-    </main>
+    </Tabs>
   );
 }

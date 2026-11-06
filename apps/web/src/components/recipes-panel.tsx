@@ -2,6 +2,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import type { Ingredient, Recipe, RecipeLine } from "assistant/recipe-book";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { BottomAction } from "@/components/bottom-bar";
 import { Choice } from "@/components/choice";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,10 +46,12 @@ export function RecipesPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Button className="h-10" onClick={() => setOpen({ kind: "edit", recipe: null })}>
-        <PlusIcon />
-        New recipe
-      </Button>
+      <BottomAction>
+        <Button className="h-10 w-full" onClick={() => setOpen({ kind: "edit", recipe: null })}>
+          <PlusIcon />
+          New recipe
+        </Button>
+      </BottomAction>
       {recipes.data.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">No recipes yet.</p>
       ) : (

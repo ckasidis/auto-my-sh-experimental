@@ -2,6 +2,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { MessageSquareIcon, PlusIcon, RepeatIcon, SmartphoneIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import type { Schedule } from "assistant/schedule";
+import { BottomAction } from "@/components/bottom-bar";
 import { RepeatFields } from "@/components/repeat-fields";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,10 +43,12 @@ export function SchedulesPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Button className="h-10" onClick={() => setAdding(true)}>
-        <PlusIcon />
-        New schedule
-      </Button>
+      <BottomAction>
+        <Button className="h-10 w-full" onClick={() => setAdding(true)}>
+          <PlusIcon />
+          New schedule
+        </Button>
+      </BottomAction>
       {schedules.data.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Nothing scheduled.</p>
       ) : (
