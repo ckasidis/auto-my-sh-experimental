@@ -17,7 +17,7 @@ import { follow } from "@/lib/feedback";
 import { nameTaken } from "@/lib/names";
 import { compareCategories, OTHER_CATEGORY } from "utils/groceries";
 
-/** The meals app's settings, reached from every tab: today, the ingredient categories. */
+/** The app's settings, reached from every tab: today, the ingredient categories. */
 export function SettingsDialog({
   open,
   onClose,
