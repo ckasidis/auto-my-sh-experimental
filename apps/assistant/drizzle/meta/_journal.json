@@ -64,6 +64,13 @@
       "when": 1793927488455,
       "tag": "0008_drop_workout_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794038499937,
+      "tag": "0009_grocery_purchases",
+      "breakpoints": true
     }
   ]
 }

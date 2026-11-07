@@ -6,6 +6,8 @@ import type { GroceryItem } from "utils/groceries";
 import migrations from "../drizzle/migrations.js";
 import {
   type DateRange,
+  type GroceryPurchase,
+  type GroceryTick,
   type Ingredient,
   type IngredientCategory,
   type IngredientChanges,
@@ -219,6 +221,18 @@ export class UserStore
 
   groceryList(range: DateRange): GroceryItem[] {
     return this.#recipes.groceryList(range);
+  }
+
+  listPurchases(): GroceryPurchase[] {
+    return this.#recipes.listPurchases();
+  }
+
+  markPurchased(tick: GroceryTick): GroceryPurchase {
+    return this.#recipes.markPurchased(tick);
+  }
+
+  unmarkPurchased(tick: GroceryTick): boolean {
+    return this.#recipes.unmarkPurchased(tick);
   }
 
   listExercises(): Exercise[] {

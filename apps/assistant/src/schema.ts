@@ -87,6 +87,20 @@ export const meals = sqliteTable(
   (table) => [index("meals_date").on(table.date)],
 );
 
+/** The grocery list's ticks: an ingredient already bought for one week's planned meals. */
+export const groceryPurchases = sqliteTable(
+  "grocery_purchases",
+  {
+    /** The week's Monday, YYYY-MM-DD: the grocery list it was ticked on. */
+    week: text().notNull(),
+    ingredientId: text("ingredient_id")
+      .notNull()
+      .references(() => ingredients.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.week, table.ingredientId] })],
+);
+
 /** The exercises the owner does, such as "Push-up" or "Squat". */
 export const exercises = sqliteTable("exercises", {
   id: text().primaryKey(),

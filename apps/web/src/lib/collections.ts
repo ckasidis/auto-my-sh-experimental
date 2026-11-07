@@ -2,6 +2,7 @@ import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import { createCollection } from "@tanstack/react-db";
 import { QueryClient } from "@tanstack/react-query";
 import type {
+  GroceryPurchase,
   Ingredient,
   IngredientCategory,
   IngredientChanges,
@@ -31,6 +32,9 @@ import {
   listCategories,
   listIngredients,
   listMeals,
+  listPurchases,
+  markPurchased,
+  unmarkPurchased,
   listRecipes,
   listSchedules,
   listTodos,
@@ -291,7 +295,8 @@ export const ingredientCollection = createCollection(
           deleteIngredient({ data: { id: original.id } }),
         ),
       );
-      await collection.utils.refetch();
+      // The server takes the ingredient's grocery ticks off along with it.
+      await Promise.all([collection.utils.refetch(), purchaseCollection.utils.refetch()]);
     },
   }),
 );
@@ -374,6 +379,33 @@ export const mealCollection = createCollection(
     onDelete: async ({ transaction, collection }) => {
       await Promise.all(
         transaction.mutations.map(({ original }) => deleteMeal({ data: { id: original.id } })),
+      );
+      await collection.utils.refetch();
+    },
+  }),
+);
+
+/** The grocery list's ticks, one per week and ingredient: a tick is added, or taken off, never changed. */
+export const purchaseCollection = createCollection(
+  queryCollectionOptions({
+    id: "purchases",
+    queryKey: ["purchases"],
+    queryFn: () => listPurchases(),
+    queryClient,
+    getKey: (purchase: GroceryPurchase) => `${purchase.week} ${purchase.ingredientId}`,
+    onInsert: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ modified }) =>
+          markPurchased({ data: { week: modified.week, ingredientId: modified.ingredientId } }),
+        ),
+      );
+      await collection.utils.refetch();
+    },
+    onDelete: async ({ transaction, collection }) => {
+      await Promise.all(
+        transaction.mutations.map(({ original }) =>
+          unmarkPurchased({ data: { week: original.week, ingredientId: original.ingredientId } }),
+        ),
       );
       await collection.utils.refetch();
     },

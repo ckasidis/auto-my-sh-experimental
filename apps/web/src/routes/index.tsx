@@ -22,6 +22,7 @@ import {
   ingredientCollection,
   mealCollection,
   planCollection,
+  purchaseCollection,
   recipeCollection,
   scheduleCollection,
   sessionCollection,
@@ -56,6 +57,7 @@ export const Route = createFileRoute("/")({
         ingredientCollection.preload(),
         recipeCollection.preload(),
         mealCollection.preload(),
+        purchaseCollection.preload(),
         exerciseCollection.preload(),
         planCollection.preload(),
         sessionCollection.preload(),
@@ -103,7 +105,8 @@ function Home() {
     <Tabs defaultValue="todos">
       <BottomSlot.Provider value={slot}>
         <main
-          className="mx-auto max-w-md px-4 pt-3"
+          // `w-full`: as a flex item with auto margins, it would otherwise shrink to its content.
+          className="mx-auto w-full max-w-md px-4 pt-3"
           // Clears the bottom bar, whose height changes with the open tab's action.
           style={{ paddingBottom: barHeight + 24 }}
         >

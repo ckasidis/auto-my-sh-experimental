@@ -4,7 +4,13 @@ import { getRequestHeader } from "@tanstack/react-start/server";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { launchData } from "@/lib/telegram";
-import type { Ingredient, IngredientCategory, Meal, Recipe } from "assistant/recipe-book";
+import type {
+  GroceryPurchase,
+  Ingredient,
+  IngredientCategory,
+  Meal,
+  Recipe,
+} from "assistant/recipe-book";
 import type { Schedule } from "assistant/schedule";
 import type { Todo } from "assistant/user-store";
 import type { Exercise, WorkoutPlan, WorkoutSession } from "assistant/workout-log";
@@ -161,6 +167,9 @@ const MealUpdateInput = Type.Object({
     servings: Type.Optional(Servings),
   }),
 });
+
+/** An ingredient on the grocery list of the week starting on `week`, a Monday. */
+const GroceryTickInput = Type.Object({ week: CalendarDate, ingredientId: Id });
 
 // Limits match the chat's workout tools.
 const PlanExercises = Type.Array(
@@ -381,6 +390,21 @@ export const deleteMeal = createServerFn({ method: "POST" })
   .middleware([ownerOnly])
   .validator((input: Static<typeof IdInput>) => Value.Parse(IdInput, input))
   .handler(async ({ data }) => owner().removeMeal(data.id));
+
+/** Every week's grocery ticks: the ingredients already bought for its meals. */
+export const listPurchases = createServerFn({ method: "GET" })
+  .middleware([ownerOnly])
+  .handler(async (): Promise<GroceryPurchase[]> => plain(await owner().listPurchases()));
+
+export const markPurchased = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof GroceryTickInput>) => Value.Parse(GroceryTickInput, input))
+  .handler(async ({ data }): Promise<GroceryPurchase> => plain(await owner().markPurchased(data)));
+
+export const unmarkPurchased = createServerFn({ method: "POST" })
+  .middleware([ownerOnly])
+  .validator((input: Static<typeof GroceryTickInput>) => Value.Parse(GroceryTickInput, input))
+  .handler(async ({ data }) => owner().unmarkPurchased(data));
 
 /** Every exercise, by name. */
 export const listExercises = createServerFn({ method: "GET" })

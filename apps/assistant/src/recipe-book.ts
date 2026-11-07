@@ -2,7 +2,14 @@ import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { type GroceryItem, groceryList, OTHER_CATEGORY } from "utils/groceries";
-import { ingredientCategories, ingredients, meals, recipeIngredients, recipes } from "./schema.ts";
+import {
+  groceryPurchases,
+  ingredientCategories,
+  ingredients,
+  meals,
+  recipeIngredients,
+  recipes,
+} from "./schema.ts";
 
 /** A group of ingredients, such as "Produce" or "Dairy"; `OTHER_CATEGORY` is the default one. */
 export type IngredientCategory = typeof ingredientCategories.$inferSelect;
@@ -82,6 +89,12 @@ export type DateRange = {
   readonly to: string;
 };
 
+/** An ingredient ticked off a week's grocery list as already bought. */
+export type GroceryPurchase = typeof groceryPurchases.$inferSelect;
+
+/** A tick to add or take off: the ingredient, on the grocery list of the week starting on `week`, a Monday. */
+export type GroceryTick = Pick<GroceryPurchase, "week" | "ingredientId">;
+
 type Awaitable<T> = T | Promise<T>;
 
 /** The `UserStore` object's recipe methods, which the recipe tools call; over RPC each returns a promise. */
@@ -104,6 +117,9 @@ export interface OwnerRecipes {
   updateMeal(id: string, changes: MealChanges): Awaitable<Meal | null>;
   removeMeal(id: string): Awaitable<boolean>;
   groceryList(range: DateRange): Awaitable<GroceryItem[]>;
+  listPurchases(): Awaitable<GroceryPurchase[]>;
+  markPurchased(tick: GroceryTick): Awaitable<GroceryPurchase>;
+  unmarkPurchased(tick: GroceryTick): Awaitable<boolean>;
 }
 
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -120,6 +136,13 @@ export function isCalendarDate(text: string): boolean {
 /** Refuses text that is not a real YYYY-MM-DD date. */
 export function checkDate(date: string): void {
   if (!isCalendarDate(date)) throw new Error(`${date} is not a calendar date (YYYY-MM-DD)`);
+}
+
+/** Refuses a date that is not a Monday, the day a grocery list's week starts. */
+function checkMonday(date: string): void {
+  checkDate(date);
+
+  if (new Date(`${date}T00:00:00Z`).getUTCDay() !== 1) throw new Error(`${date} is not a Monday`);
 }
 
 function checkServings(servings: number): void {
@@ -339,7 +362,7 @@ export class RecipeBook implements OwnerRecipes {
     );
   }
 
-  /** Deletes the ingredient; false when no ingredient has this id. Refuses one a recipe still uses. */
+  /** Deletes the ingredient and its grocery ticks; false when no ingredient has this id. Refuses one a recipe still uses. */
   removeIngredient(id: string): boolean {
     const users = this.#db
       .selectDistinct({ name: recipes.name })
@@ -355,13 +378,14 @@ export class RecipeBook implements OwnerRecipes {
       );
     }
 
-    const deleted = this.#db
-      .delete(ingredients)
-      .where(eq(ingredients.id, id))
-      .returning({ id: ingredients.id })
-      .all();
+    return this.#db.transaction((tx) => {
+      tx.delete(groceryPurchases).where(eq(groceryPurchases.ingredientId, id)).run();
 
-    return deleted.length > 0;
+      return (
+        tx.delete(ingredients).where(eq(ingredients.id, id)).returning({ id: ingredients.id }).all()
+          .length > 0
+      );
+    });
   }
 
   /** By name, ignoring case. */
@@ -529,6 +553,57 @@ export class RecipeBook implements OwnerRecipes {
       this.listRecipes(),
       this.listIngredients(),
       this.listCategories(),
+    );
+  }
+
+  /** Every week's ticks, by week. */
+  listPurchases(): GroceryPurchase[] {
+    return this.#db
+      .select()
+      .from(groceryPurchases)
+      .orderBy(asc(groceryPurchases.week), asc(groceryPurchases.ingredientId))
+      .all();
+  }
+
+  /** Ticks the ingredient off the week's grocery list as bought, or returns the tick already there. */
+  markPurchased(tick: GroceryTick): GroceryPurchase {
+    checkMonday(tick.week);
+
+    if (this.#ingredient(tick.ingredientId) === undefined) {
+      throw new Error(`No ingredient has id ${tick.ingredientId}`);
+    }
+
+    this.#db
+      .insert(groceryPurchases)
+      .values({ ...tick, createdAt: Date.now() })
+      .onConflictDoNothing()
+      .run();
+
+    return this.#db
+      .select()
+      .from(groceryPurchases)
+      .where(
+        and(
+          eq(groceryPurchases.week, tick.week),
+          eq(groceryPurchases.ingredientId, tick.ingredientId),
+        ),
+      )
+      .get()!;
+  }
+
+  /** Takes the tick off, so the ingredient is to buy again; false when it was not ticked. */
+  unmarkPurchased(tick: GroceryTick): boolean {
+    return (
+      this.#db
+        .delete(groceryPurchases)
+        .where(
+          and(
+            eq(groceryPurchases.week, tick.week),
+            eq(groceryPurchases.ingredientId, tick.ingredientId),
+          ),
+        )
+        .returning({ week: groceryPurchases.week })
+        .all().length > 0
     );
   }
 

@@ -15,6 +15,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import type { GroceryItem } from "utils/groceries";
 import {
+  type GroceryPurchase,
   type Ingredient,
   type IngredientCategory,
   isCalendarDate,
@@ -39,6 +40,8 @@ const rpcRecipe = (recipe: Recipe) =>
   });
 
 const rpcMeal = (meal: Meal) => withDisposer({ ...meal });
+
+const rpcPurchase = (purchase: GroceryPurchase) => withDisposer({ ...purchase });
 
 const rpcGroceryItem = (item: GroceryItem) =>
   withDisposer({ ...item, recipes: withDisposer([...item.recipes]) });
@@ -66,6 +69,9 @@ const overRpc = (store: UserStore): OwnerRecipes => ({
   updateMeal: (id, changes) => orNull(store.updateMeal(id, changes), rpcMeal),
   removeMeal: (id) => store.removeMeal(id),
   groceryList: (range) => withDisposer(store.groceryList(range).map(rpcGroceryItem)),
+  listPurchases: () => withDisposer(store.listPurchases().map(rpcPurchase)),
+  markPurchased: (tick) => rpcPurchase(store.markPurchased(tick)),
+  unmarkPurchased: (tick) => store.unmarkPurchased(tick),
 });
 
 /**
@@ -299,6 +305,35 @@ describe("recipe book", () => {
         recipes: ["Carbonara"],
       },
     ]);
+  });
+
+  it("ticks ingredients off a week's grocery list, apart from other weeks", () => {
+    const store = stocked();
+    const week = "2026-11-02";
+
+    expect(store.markPurchased({ week, ingredientId: "egg" })).toMatchObject({
+      week,
+      ingredientId: "egg",
+    });
+    expect(store.markPurchased({ week, ingredientId: "egg" })).toMatchObject({ week });
+    store.markPurchased({ week: "2026-11-09", ingredientId: "salt" });
+    expect(store.listPurchases().map(({ week, ingredientId }) => [week, ingredientId])).toEqual([
+      ["2026-11-02", "egg"],
+      ["2026-11-09", "salt"],
+    ]);
+
+    expect(() => store.markPurchased({ week: "2026-11-03", ingredientId: "egg" })).toThrow(
+      "not a Monday",
+    );
+    expect(() => store.markPurchased({ week, ingredientId: "nope" })).toThrow("No ingredient");
+
+    expect(store.unmarkPurchased({ week, ingredientId: "egg" })).toBe(true);
+    expect(store.unmarkPurchased({ week, ingredientId: "egg" })).toBe(false);
+
+    store.addIngredient({ id: "foil", name: "Foil", unit: null, categoryId: null });
+    store.markPurchased({ week, ingredientId: "foil" });
+    expect(store.removeIngredient("foil")).toBe(true);
+    expect(store.listPurchases().map(({ ingredientId }) => ingredientId)).toEqual(["salt"]);
   });
 
   it("accepts only real calendar dates", () => {

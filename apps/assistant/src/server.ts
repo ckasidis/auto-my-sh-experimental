@@ -6,6 +6,8 @@ import { verifyInitData } from "./init-data.ts";
 import type { GroceryItem } from "utils/groceries";
 import type {
   DateRange,
+  GroceryPurchase,
+  GroceryTick,
   Ingredient,
   IngredientCategory,
   IngredientChanges,
@@ -159,6 +161,18 @@ export default class Server extends WorkerEntrypoint<Env> {
 
   async groceryList(range: DateRange): Promise<GroceryItem[]> {
     return userStore().groceryList(range);
+  }
+
+  async listPurchases(): Promise<GroceryPurchase[]> {
+    return userStore().listPurchases();
+  }
+
+  async markPurchased(tick: GroceryTick): Promise<GroceryPurchase> {
+    return userStore().markPurchased(tick);
+  }
+
+  async unmarkPurchased(tick: GroceryTick): Promise<boolean> {
+    return userStore().unmarkPurchased(tick);
   }
 
   async listExercises(): Promise<Exercise[]> {
