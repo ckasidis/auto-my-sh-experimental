@@ -2,8 +2,8 @@ import { type Transaction, useLiveQuery } from "@tanstack/react-db";
 import type { Exercise, WorkoutPlan } from "assistant/workout-log";
 import { GripVerticalIcon, PlusIcon, XIcon } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
+import { AddExercise, type AddedExercise, refusedExercises } from "@/components/add-exercise";
 import { BottomAction } from "@/components/bottom-bar";
-import { Choice } from "@/components/choice";
 import { Sortable, SortableItem, SortableItemHandle } from "@/components/reui/sortable";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,14 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { exerciseCollection, planCollection } from "@/lib/collections";
 import { follow } from "@/lib/feedback";
-import { nameTaken } from "@/lib/names";
-import { MAX_PLAN_SETS, parseCount } from "@/lib/workouts";
-
-/** The exercise picker's option for one typed in instead. */
-const NEW_EXERCISE = "new";
-
-/** Working sets for an exercise added to a plan. */
-const DEFAULT_SETS = "3";
+import { DEFAULT_SETS, MAX_PLAN_SETS, parseCount } from "@/lib/workouts";
 
 type Open = { readonly kind: "add" } | { readonly kind: "edit"; readonly plan: WorkoutPlan };
 
@@ -122,46 +115,20 @@ function PlanForm({
     plan?.exercises.map(({ exerciseId, sets }) => ({ exerciseId, sets: String(sets) })) ?? [],
   );
 
-  const [choice, setChoice] = useState(NEW_EXERCISE);
-  const [newName, setNewName] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   // Exercises added here, which the plan's save waits for: the server refuses a plan of exercises it does not have.
-  const added = useRef<{ readonly id: string; readonly insert: Transaction }[]>([]);
+  const added = useRef<AddedExercise[]>([]);
 
   const names = new Map(exercises.map(({ id, name: exerciseName }) => [id, exerciseName]));
-  const left = exercises.filter(({ id }) => !lines.some((line) => line.exerciseId === id));
-
-  const items = {
-    ...Object.fromEntries(left.map(({ id, name: exerciseName }) => [id, exerciseName])),
-    [NEW_EXERCISE]: "New exercise…",
-  };
-
-  // A choice added meanwhile falls back to the first left.
-  const chosen = choice in items ? choice : (left[0]?.id ?? NEW_EXERCISE);
-  const adding = chosen === NEW_EXERCISE;
-  const taken = adding && nameTaken(newName, exercises);
-  const canAdd = !adding || (newName.trim() !== "" && !taken);
 
   const counts = lines.map(({ sets }) => parseCount(sets, MAX_PLAN_SETS));
   const valid = name.trim() !== "" && counts.every((count) => count !== null);
 
-  const addLine = () => {
-    if (!canAdd) return;
+  const addLine = (id: string, insert?: Transaction) => {
+    if (insert !== undefined) added.current.push({ id, insert });
 
-    let id = chosen;
-
-    if (adding) {
-      id = `exercise:app:${crypto.randomUUID()}`;
-
-      const insert = exerciseCollection.insert({ id, name: newName.trim(), createdAt: Date.now() });
-
-      follow(insert);
-      added.current.push({ id, insert });
-      setNewName("");
-    }
-
-    setLines([...lines, { exerciseId: id, sets: DEFAULT_SETS }]);
+    setLines([...lines, { exerciseId: id, sets: String(DEFAULT_SETS) }]);
   };
 
   const save = async (event: FormEvent) => {
@@ -177,12 +144,7 @@ function PlanForm({
     onClose();
 
     // An exercise the server refused is left out.
-    const refused = new Set<string>();
-
-    await Promise.all(
-      added.current.map(({ id, insert }) => insert.when("settled").catch(() => refused.add(id))),
-    );
-
+    const refused = await refusedExercises(added.current);
     const kept = planExercises.filter(({ exerciseId }) => !refused.has(exerciseId));
 
     if (plan === null) {
@@ -280,38 +242,12 @@ function PlanForm({
             ))}
           </Sortable>
         )}
-        <div className="grid gap-1.5 pt-1">
-          <div className="flex gap-2">
-            <Choice items={items} value={chosen} onChange={setChoice} label="Exercise to add" />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={addLine}
-              disabled={!canAdd}
-              aria-label="Add exercise"
-            >
-              <PlusIcon />
-            </Button>
-          </div>
-          {adding && (
-            <Input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              onKeyDown={(event) => {
-                // Enter adds the exercise instead of saving the plan.
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  addLine();
-                }
-              }}
-              placeholder="Exercise name, like Squat"
-              maxLength={200}
-              aria-label="New exercise"
-              aria-invalid={taken}
-            />
-          )}
-          {taken && <p className="text-xs text-destructive">Already on the list.</p>}
+        <div className="pt-1">
+          <AddExercise
+            exercises={exercises}
+            taken={new Set(lines.map(({ exerciseId }) => exerciseId))}
+            onAdd={addLine}
+          />
         </div>
       </div>
       <DialogFooter className="flex-row justify-between sm:justify-between">

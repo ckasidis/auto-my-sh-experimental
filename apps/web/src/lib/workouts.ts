@@ -1,7 +1,7 @@
 import type { SessionSet, WorkoutPlan, WorkoutSession } from "assistant/workout-log";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
-import { formatSet, previousWarmups } from "utils/workouts";
+import { formatSet, previousWarmups, previousWorkingSets } from "utils/workouts";
 
 // Limits match the store's.
 export const MAX_PLAN_SETS = 20;
@@ -126,6 +126,25 @@ export function startDraft(
       })),
   };
 }
+
+/** Working sets for an exercise added to a workout that has never been done: as many as a plan's start with. */
+export const DEFAULT_SETS = 3;
+
+/**
+ * Empty rows for an exercise added to a workout outside its plan: as many warm-ups and working sets as the exercise's
+ * newest session had, or `DEFAULT_SETS` working sets for one never done.
+ */
+export const addedExerciseRows = (
+  exerciseId: string,
+  sessions: readonly WorkoutSession[],
+): ExerciseRows => ({
+  exerciseId,
+  warmups: Array.from({ length: previousWarmups(sessions, exerciseId) }, () => EMPTY_ROW),
+  sets: Array.from(
+    { length: previousWorkingSets(sessions, exerciseId) ?? DEFAULT_SETS },
+    () => EMPTY_ROW,
+  ),
+});
 
 const DRAFT_KEY = "workout-draft";
 

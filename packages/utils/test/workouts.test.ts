@@ -5,6 +5,7 @@ import {
   formatSet,
   previousSets,
   previousWarmups,
+  previousWorkingSets,
 } from "../src/workouts.ts";
 
 const set = (exerciseId: string, reps: number, weight: number | null, warmup = false) => ({
@@ -119,10 +120,12 @@ describe("previous sets", () => {
     expect(previousSets(sessions, "deadlift", false, 1)).toEqual([undefined]);
   });
 
-  it("counts the warm-ups of the exercise's newest session", () => {
+  it("counts the warm-ups and working sets of the exercise's newest session", () => {
     expect(previousWarmups(sessions, "squat")).toBe(0);
     expect(previousWarmups(sessions.slice(0, 1), "squat")).toBe(1);
     expect(previousWarmups(sessions, "deadlift")).toBe(0);
+    expect(previousWorkingSets(sessions, "squat")).toBe(2);
+    expect(previousWorkingSets(sessions, "deadlift")).toBeUndefined();
   });
 
   it("formats a set", () => {

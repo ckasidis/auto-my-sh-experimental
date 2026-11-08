@@ -140,12 +140,29 @@ export function previousSets(
 }
 
 /** How many warm-up sets of the exercise its newest session had: as many as a new session starts with. */
-export function previousWarmups(sessions: readonly LoggedSession[], exerciseId: string): number {
+export const previousWarmups = (sessions: readonly LoggedSession[], exerciseId: string): number =>
+  previousCount(sessions, exerciseId, true) ?? 0;
+
+/**
+ * How many working sets of the exercise its newest session had, for one added to a workout outside a plan; undefined
+ * for one never done.
+ */
+export const previousWorkingSets = (
+  sessions: readonly LoggedSession[],
+  exerciseId: string,
+): number | undefined => previousCount(sessions, exerciseId, false);
+
+function previousCount(
+  sessions: readonly LoggedSession[],
+  exerciseId: string,
+  warmup: boolean,
+): number | undefined {
   const newest = [...sessions]
     .sort(oldestFirst)
     .findLast((session) => session.sets.some((set) => set.exerciseId === exerciseId));
 
-  return newest?.sets.filter((set) => set.exerciseId === exerciseId && set.warmup).length ?? 0;
+  return newest?.sets.filter((set) => set.exerciseId === exerciseId && set.warmup === warmup)
+    .length;
 }
 
 /** "60 kg × 8", or "8 reps" without added weight. */

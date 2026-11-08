@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EMPTY_ROW, loadDraft, rowsToSets, setsToRows, startDraft } from "../src/lib/workouts.ts";
+import {
+  addedExerciseRows,
+  DEFAULT_SETS,
+  EMPTY_ROW,
+  loadDraft,
+  rowsToSets,
+  setsToRows,
+  startDraft,
+} from "../src/lib/workouts.ts";
 
 const row = (weight: string, reps: string) => ({ weight, reps });
 
@@ -83,5 +91,34 @@ describe("a workout from a plan", () => {
 
   it("is none when there is no storage", () => {
     expect(loadDraft()).toBeNull();
+  });
+});
+
+describe("an exercise added to a workout", () => {
+  it("starts with as many rows as its newest session had, or the default for one never done", () => {
+    const sessions = [
+      {
+        id: "s1",
+        date: "2026-11-02",
+        planId: null,
+        createdAt: 1,
+        sets: [
+          { exerciseId: "curl", warmup: true, reps: 12, weight: 5 },
+          { exerciseId: "curl", warmup: false, reps: 10, weight: 10 },
+          { exerciseId: "curl", warmup: false, reps: 8, weight: 10 },
+        ],
+      },
+    ];
+
+    expect(addedExerciseRows("curl", sessions)).toEqual({
+      exerciseId: "curl",
+      warmups: [EMPTY_ROW],
+      sets: [EMPTY_ROW, EMPTY_ROW],
+    });
+    expect(addedExerciseRows("row", sessions)).toEqual({
+      exerciseId: "row",
+      warmups: [],
+      sets: Array.from({ length: DEFAULT_SETS }, () => EMPTY_ROW),
+    });
   });
 });

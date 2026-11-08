@@ -1,6 +1,7 @@
-import { useLiveQuery } from "@tanstack/react-db";
-import type { WorkoutSession } from "assistant/workout-log";
-import { type FormEvent, useState } from "react";
+import { type Transaction, useLiveQuery } from "@tanstack/react-db";
+import type { Exercise, WorkoutSession } from "assistant/workout-log";
+import { type FormEvent, useRef, useState } from "react";
+import { AddExercise, type AddedExercise, refusedExercises } from "@/components/add-exercise";
 import { ExerciseSetRows } from "@/components/set-rows";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,7 @@ import { exerciseCollection, planCollection, sessionCollection } from "@/lib/col
 import { formatDay, today } from "@/lib/dates";
 import { follow } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
-import { formatSets, rowsToSets, setsToRows } from "@/lib/workouts";
+import { addedExerciseRows, formatSets, rowsToSets, setsToRows } from "@/lib/workouts";
 
 /** The sessions shown at first, and added by each "Show more". */
 const SESSIONS_PER_PAGE = 10;
@@ -31,7 +32,10 @@ export function HistoryPanel() {
       .orderBy(({ session }) => session.createdAt, "desc"),
   );
 
-  const exercises = useLiveQuery((q) => q.from({ exercise: exerciseCollection }));
+  const exercises = useLiveQuery((q) =>
+    q.from({ exercise: exerciseCollection }).orderBy(({ exercise }) => exercise.name, "asc"),
+  );
+
   const plans = useLiveQuery((q) => q.from({ plan: planCollection }));
   const [editing, setEditing] = useState<WorkoutSession | null>(null);
   const [shown, setShown] = useState(SESSIONS_PER_PAGE);
@@ -92,6 +96,8 @@ export function HistoryPanel() {
             <EditSession
               key={editing.id}
               session={editing}
+              sessions={sessions.data}
+              exercises={exercises.data}
               names={names}
               onClose={() => setEditing(null)}
             />
@@ -102,13 +108,20 @@ export function HistoryPanel() {
   );
 }
 
-/** Changes a session's date and sets, or deletes it. Emptying every set is deleting it. */
+/**
+ * Changes a session's date and sets, adds an exercise left out of it, or deletes it. Emptying every set is deleting
+ * it.
+ */
 function EditSession({
   session,
+  sessions,
+  exercises,
   names,
   onClose,
 }: {
   readonly session: WorkoutSession;
+  readonly sessions: readonly WorkoutSession[];
+  readonly exercises: readonly Exercise[];
   readonly names: ReadonlyMap<string, string>;
   readonly onClose: () => void;
 }) {
@@ -117,18 +130,35 @@ function EditSession({
   const sets = rowsToSets(rows);
   const valid = date !== "" && sets !== null && sets.length > 0;
 
-  const save = (event: FormEvent) => {
+  // Exercises added here by name, which the save waits for: the server refuses a session of an exercise it does not
+  // have.
+  const added = useRef<AddedExercise[]>([]);
+
+  const addExercise = (exerciseId: string, insert?: Transaction) => {
+    if (insert !== undefined) added.current.push({ id: exerciseId, insert });
+
+    setRows([...rows, addedExerciseRows(exerciseId, sessions)]);
+  };
+
+  const save = async (event: FormEvent) => {
     event.preventDefault();
 
     if (!valid) return;
 
+    onClose();
+
+    // An exercise the server refused is left out.
+    const refused = await refusedExercises(added.current);
+    const kept = sets.filter(({ exerciseId }) => !refused.has(exerciseId));
+
+    if (kept.length === 0) return;
+
     follow(
       sessionCollection.update(session.id, (draft) => {
         draft.date = date;
-        draft.sets = sets;
+        draft.sets = kept;
       }),
     );
-    onClose();
   };
 
   const remove = () => {
@@ -140,7 +170,9 @@ function EditSession({
     <form onSubmit={save} className="grid gap-4">
       <DialogHeader>
         <DialogTitle>Workout</DialogTitle>
-        <DialogDescription>Remove a set with its ×.</DialogDescription>
+        <DialogDescription>
+          Remove a set with its ×. Sets left empty are not saved.
+        </DialogDescription>
       </DialogHeader>
       <div className="grid gap-1.5">
         <Label htmlFor="session-date">Date</Label>
@@ -160,6 +192,11 @@ function EditSession({
           onChange={(next) => setRows(rows.with(index, next))}
         />
       ))}
+      <AddExercise
+        exercises={exercises}
+        taken={new Set(rows.map(({ exerciseId }) => exerciseId))}
+        onAdd={addExercise}
+      />
       {sets === null && (
         <p className="text-xs text-destructive">
           A set needs its reps, and a weight that is a number.
