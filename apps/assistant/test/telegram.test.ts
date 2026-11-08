@@ -28,6 +28,7 @@ import {
   createReplyHook,
   createTelegramChannel,
   ownerSurface,
+  parseCommand,
   splitText,
   WEBHOOK_PATH,
 } from "../src/telegram.ts";
@@ -358,5 +359,15 @@ describe("reply hook", () => {
     } finally {
       await harness.close(context);
     }
+  });
+});
+
+describe("parseCommand", () => {
+  it("reads a known command, with or without the bot's name, and nothing else", () => {
+    expect(parseCommand("/clear")).toBe("clear");
+    expect(parseCommand(" /CLEAR@MyAssistantBot ")).toBe("clear");
+    expect(parseCommand("/clear the todos")).toBeUndefined();
+    expect(parseCommand("/start")).toBeUndefined();
+    expect(parseCommand("clear")).toBeUndefined();
   });
 });

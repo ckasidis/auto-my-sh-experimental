@@ -24,6 +24,7 @@
     ".cloudflare/types",
     "cloudflare.config.ts",
     "src",
+    "scripts",
     "test",
     "drizzle",
     "vite.config.ts"

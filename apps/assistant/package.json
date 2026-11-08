@@ -26,7 +26,8 @@
     "deploy:dry-run": "cf deploy --prebuilt --mode production --dry-run",
     "test": "vp test",
     "typecheck": "cf workers types && tsc",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "telegram:commands": "node scripts/set-commands.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "~1.4.0",

@@ -6,7 +6,7 @@ import type { GatewayEvent } from "agents/experimental/channels";
 import { PiHarness } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { CLOUDFLARE_PROVIDER_ID, createAI } from "agents/models/pi-ai";
-import { chatExtension, ownerDrafts } from "./chat.ts";
+import { chatExtension, ownerDrafts, telegramChannel } from "./chat.ts";
 import {
   addSchedule,
   cancelSchedule,
@@ -16,7 +16,8 @@ import {
   schedulesExtension,
 } from "./schedule.ts";
 import { recipesExtension } from "./recipes.ts";
-import { OWNER } from "./telegram.ts";
+import type { Command } from "./commands.ts";
+import { OWNER, ownerSurface, parseCommand } from "./telegram.ts";
 import { todosExtension } from "./todos.ts";
 import { workoutsExtension } from "./workouts.ts";
 
@@ -37,7 +38,8 @@ export const assistant = () => exports.Assistant.getByName(OWNER);
 /**
  * The owner's assistant: one Durable Object for the one private chat. The Channels gateway hands it the owner's
  * messages; Pi runs the conversation through `PiHarness` with the chat, schedules, todos, and recipes extensions, and the chat
- * extension sends each final answer back. Its schedule methods are the Mini App's way to the chat's schedules.
+ * extension sends each final answer back. A command (`/clear`) is handled here instead of reaching the model. Its
+ * schedule methods are the Mini App's way to the chat's schedules.
  */
 export class Assistant extends DurableObject<Env> {
   readonly ai = createAI({ binding: this.env.AI });
@@ -105,6 +107,14 @@ export class Assistant extends DurableObject<Env> {
 
     if (!text) return;
 
+    const command = parseCommand(text);
+
+    if (command !== undefined) {
+      await this.#run(command);
+
+      return;
+    }
+
     // The event id is derived from the Telegram update, so a redelivered webhook is the same submission.
     const receipt = await this.harness.submit(text, { operationId: event.eventId });
 
@@ -115,6 +125,26 @@ export class Assistant extends DurableObject<Env> {
         (error) => console.error("pi operation wait failed", error),
       ),
     );
+  }
+
+  /**
+   * `/clear`: starts a new context, so the model forgets the conversation so far; scheduled instructions, todos, and
+   * the recipe book and workout log are kept. A run in progress finishes first. A redelivered command clears again,
+   * which changes nothing more.
+   */
+  async #run(command: Command): Promise<void> {
+    switch (command) {
+      case "clear": {
+        await this.harness.session().reset();
+
+        const result = await telegramChannel.deliver!(ownerSurface(this.env.TELEGRAM_CHAT_ID), {
+          markdown:
+            "Session memory cleared: I've forgotten our conversation so far. Your schedules, todos, recipes and workouts are kept.",
+        });
+
+        if (result.status !== "delivered") console.error("telegram reply not delivered", result);
+      }
+    }
   }
 
   /** The chat's scheduled instructions still to be delivered, soonest first. */

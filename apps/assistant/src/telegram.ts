@@ -18,6 +18,7 @@ import { telegram, type TelegramUpdate } from "agents/experimental/channels/tele
 import { type Api, GrammyError } from "grammy";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { type Command, COMMANDS } from "./commands.ts";
 
 /** The key the gateway knows the Telegram Channel by; it is stamped on every Telegram surface. */
 export const TELEGRAM_CHANNEL = "telegram";
@@ -27,6 +28,16 @@ export const WEBHOOK_PATH = "/telegram/webhook";
 
 /** The single agent object, and participant, every owner message reaches; the owner's `UserStore` shares its name. */
 export const OWNER = "owner";
+
+/**
+ * The command a message is, as `/clear` or `/clear@SomeBot`, with nothing after it; undefined for any other text, an
+ * unknown command included, which goes to the model as written.
+ */
+export function parseCommand(text: string): Command | undefined {
+  const name = /^\/(\w+)(?:@\w+)?$/.exec(text.trim())?.[1]?.toLowerCase();
+
+  return COMMANDS.find(({ command }) => command === name)?.command;
+}
 
 /** Telegram rejects plain-text messages longer than this. */
 const MAX_MESSAGE_LENGTH = 4096;
